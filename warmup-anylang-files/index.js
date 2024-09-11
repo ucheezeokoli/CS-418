@@ -68,7 +68,7 @@ const main = async () => {
       const data = fileData.split("\n");
       const row1 = data[0].split(/\s+/);
 
-      const background = rgbaToInt(255, 255, 0, 50);
+      //   const background = rgbaToInt(255, 255, 0, 50);
       const image = new Jimp({
         width: parseInt(row1[1]),
         height: parseInt(row1[2]),

@@ -1,8 +1,5 @@
-// Object.defineProperty(exports, "__esModule", { value: true });
 import * as fs from "fs/promises";
 import * as path from "path";
-// var fs = require("fs/promises");
-// var path = require("path");
 import { Jimp, rgbaToInt } from "jimp";
 
 const readFileFromPath = async (filePath) => {
@@ -20,23 +17,26 @@ const readFileFromPath = async (filePath) => {
   }
 };
 
-const parseData = async (fileData) => {
-  const fileDataRows = fileData.split("\n");
-
+const parseData = async (fileData, image) => {
   let fileDataParsed = {};
-  fileDataRows.map((data) => {
+  fileData.map((data) => {
     data = data.trim();
     var row = data.split(/\s+/);
     fileDataParsed[row[0]] = row.slice(1);
-  });
 
-  return fileDataParsed;
+    if (row[0] === "drawPixels") {
+      run(
+        fileDataParsed.position,
+        fileDataParsed.color,
+        fileDataParsed.drawPixels,
+        image
+      ).catch(console.error);
+    }
+  });
 };
 
-const run = async (width, height, positions, colors, pixelLength, fileName) => {
-  const image = new Jimp({ width: parseInt(width), height: parseInt(height) });
-
-  var pos_idx = 0;
+const run = async (positions, colors, pixelLength, image) => {
+  var pos_idx = 1;
   var colors_idx = 1;
   var i = 0;
   while (i < pixelLength) {
@@ -46,7 +46,7 @@ const run = async (width, height, positions, colors, pixelLength, fileName) => {
     const g = parseInt(colors[colors_idx + 1]);
     const b = parseInt(colors[colors_idx + 2]);
     const a = parseInt(colors[colors_idx + 3]);
-    // console.log(r, g, b, a);
+
     const rgba = rgbaToInt(r, g, b, a);
 
     image.setPixelColor(rgba, x, y);
@@ -55,8 +55,6 @@ const run = async (width, height, positions, colors, pixelLength, fileName) => {
     pos_idx += 2;
     colors_idx += 4;
   }
-
-  await image.write(fileName);
 };
 
 const main = async () => {
@@ -66,17 +64,20 @@ const main = async () => {
     try {
       const fileData = await readFileFromPath(filePath);
 
-      const data = await parseData(fileData);
-      console.log(data);
+      // create image
+      const data = fileData.split("\n");
+      const row1 = data[0].split(/\s+/);
 
-      run(
-        data.png[0],
-        data.png[1],
-        data.position,
-        data.color,
-        data.drawPixels,
-        data.png[2]
-      ).catch(console.error);
+      const background = rgbaToInt(255, 255, 0, 50);
+      const image = new Jimp({
+        width: parseInt(row1[1]),
+        height: parseInt(row1[2]),
+        color: background,
+      });
+
+      await parseData(data.slice(1), image);
+
+      await image.write(row1[3]);
     } catch (error) {
       console.error("Failed to read file:", error.message);
     }

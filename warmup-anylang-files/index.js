@@ -72,7 +72,6 @@ const main = async () => {
       const image = new Jimp({
         width: parseInt(row1[1]),
         height: parseInt(row1[2]),
-        color: background,
       });
 
       await parseData(data.slice(1), image);

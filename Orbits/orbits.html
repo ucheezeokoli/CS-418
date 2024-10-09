@@ -202,27 +202,43 @@ void main() {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
         gl.useProgram(program)
 
-        gl.bindVertexArray(geom.vao)
+        gl.bindVertexArray(geomT.vao)
+        gl.bindVertexArray(geomO.vao)
+
 
         gl.uniform4fv(program.uniforms.color, IlliniOrange)
-        let m = m4rotX(seconds)
-        let v = m4view([1, 2, 3], [0, 0, 0], [0, 1, 0])
+
+        // the Sun
+        let m = m4rotY(seconds * 0.5)
+        let v = m4view([2, 1, 5], [0, 0, 0], [0, 1, 0])
         gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
         gl.uniformMatrix4fv(program.uniforms.p, false, p)
+        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0)
 
-        gl.drawElements(geom.mode, geom.count, geom.type, 0)
-
-        let m2 = m4mul(m4trans(1, 0, 0), m4scale(0.5, 0.5, 0.5))
+        // the Earth
+        let m2 = m4mul(m4rotY(seconds), m4trans(2.5, 0, 0), m4scale(0.5, 0.5, 0.5), m4rotY(seconds * 3))
         gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m2))
-        gl.drawElements(geom.mode, geom.count, geom.type, 0)
+        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0)
 
-        let m3 = m4mul(m, m4trans(0, 1, 0), m4scale(0.5, 0.5, 0.5), m4rotZ(seconds))
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m3))
-        gl.drawElements(geom.mode, geom.count, geom.type, 0)
+        // Mars
+        let m3 = m4mul(m4rotY(seconds/1.9), m4trans(2.5*1.6,0,0), m4scale(0.4,0.4,0.4), m4rotY((seconds * 3)/2.2))
+        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v,m3))   
+        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0)
+        
+        // the Moon
+        let m4 = m4mul(m2, m4rotY(seconds * 2), m4trans(2.1,0,0), m4scale(0.3,0.3,0.3))
+        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v,m4))   
+        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0)
 
-        let m4 = m4mul(m3, m4trans(1, 0, 0), m4scale(0.5, 0.5, 0.5))
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m4))
-        gl.drawElements(geom.mode, geom.count, geom.type, 0)
+        // Phobos
+        let m5 = m4mul(m3, m4rotY(seconds * 5), m4trans(1.5,0,0), m4scale(0.2,0.2,0.2))
+        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v,m5))   
+        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0)
+
+        // Deimos
+        let m6 = m4mul(m3, m4rotY(seconds * 2.5), m4trans(3,0,0), m4scale(0.1,0.1,0.1))
+        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v,m6))   
+        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0)
     }
 
     /** Compute any time-varying or animated aspects of the scene */
@@ -259,8 +275,8 @@ void main() {
         let fs = document.querySelector('#frag').textContent.trim()
         window.program = compileShader(vs, fs)
         gl.enable(gl.DEPTH_TEST)
-        window.geom = setupGeomery(tetrahedron)
-        window.geom = setupGeomery(octahedron)
+        window.geomT = setupGeomery(tetrahedron)
+        window.geomO = setupGeomery(octahedron)
         fillScreen()
         window.addEventListener('resize', fillScreen)
         requestAnimationFrame(tick)

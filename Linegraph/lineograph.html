@@ -1,11 +1,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Single-file Example</title>
+    <title>Lineograph</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
-    <script type="text/javascript" src="/selfreloader.js" deffered></script>
 
     <!-- The source code of a vertex shader directly in the HTML. The 'type=' command can have any value except "javascript" and just tells the browser not to try to run the code as javascript. -->
     <script id="vert" type="glsl">
@@ -203,80 +202,35 @@
       };
 
       /** Draw one frame */
-      function draw(seconds) {
-        gl.clearColor(...IlliniBlue); // f(...[1,2,3]) means f(1,2,3)
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      function draw() {
+        // console.log(position.x, position.y, position.z);
         gl.useProgram(program);
 
-        gl.bindVertexArray(geomT.vao);
         gl.bindVertexArray(geomO.vao);
 
-        gl.uniform4fv(program.uniforms.color, IlliniOrange);
-
-        // the Sun
-        let m = m4rotY(seconds * 0.5);
-        let v = m4view([2, 1, 5], [0, 0, 0], [0, 1, 0]);
+        if (keysBeingPressed["q"]) {
+          position.z += 0.1;
+        }
+        if (keysBeingPressed["e"]) {
+          position.z -= 0.1;
+        }
+        if (keysBeingPressed["a"]) {
+          position.x -= 0.1;
+        }
+        if (keysBeingPressed["d"]) {
+          position.x += 0.1;
+        }
+        if (keysBeingPressed["w"]) {
+          position.y += 0.1;
+        }
+        if (keysBeingPressed["s"]) {
+          position.y -= 0.1;
+        }
+        let v = m4view([0, 1, 20], [0, 0, 0], [0, 1, 0]);
+        let m = m4trans(position.x, position.y, position.z);
         gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m));
         gl.uniformMatrix4fv(program.uniforms.p, false, p);
         gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // the Earth
-        let m2 = m4mul(
-          m4rotY(seconds),
-          m4trans(2.5, 0, 0),
-          m4scale(0.5, 0.5, 0.5),
-          m4rotY(seconds * 3)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m2));
-        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // Mars
-        let m3 = m4mul(
-          m4rotY(seconds / 1.9),
-          m4trans(2.5 * 1.6, 0, 0),
-          m4scale(0.4, 0.4, 0.4),
-          m4rotY((seconds * 3) / 2.2)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m3));
-        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // the Moon
-        let m4 = m4mul(
-          m2,
-          m4rotY(seconds * 2),
-          m4trans(2.1, 0, 0),
-          m4scale(0.3, 0.3, 0.3)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m4));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
-
-        // Phobos
-        let m5 = m4mul(
-          m3,
-          m4rotY(seconds * 5),
-          m4trans(1.5, 0, 0),
-          m4scale(0.2, 0.2, 0.2)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m5));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
-
-        // Deimos
-        let m6 = m4mul(
-          m3,
-          m4rotY(seconds * 2.5),
-          m4trans(3, 0, 0),
-          m4scale(0.1, 0.1, 0.1)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m6));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
-      }
-
-      /** Compute any time-varying or animated aspects of the scene */
-      function tick(milliseconds) {
-        let seconds = milliseconds / 1000;
-
-        draw(seconds);
-        requestAnimationFrame(tick);
       }
 
       /** Resizes the canvas to completely fill the screen */
@@ -291,7 +245,8 @@
         canvas.style.height = "";
         if (window.gl) {
           gl.viewport(0, 0, canvas.width, canvas.height);
-          window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          window.p = m4perspNegZ(0.1, 50, 1.5, canvas.width, canvas.height);
         }
       }
 
@@ -310,8 +265,23 @@
         window.geomO = setupGeomery(octahedron);
         fillScreen();
         window.addEventListener("resize", fillScreen);
-        requestAnimationFrame(tick);
+        window.position = {
+          x: 0,
+          y: 0,
+          z: 0,
+        };
+        draw();
       });
+
+      window.keysBeingPressed = {};
+      window.addEventListener("keydown", (event) => {
+        keysBeingPressed[event.key] = true;
+        draw();
+      });
+      window.addEventListener(
+        "keyup",
+        (event) => (keysBeingPressed[event.key] = false)
+      );
     </script>
   </head>
 
@@ -320,9 +290,6 @@
     data-new-gr-c-s-check-loaded="8.912.0"
     data-gr-ext-installed=""
   >
-    <canvas width="530" height="680" style=""></canvas>
+    <canvas width="530" height="680"></canvas>
   </body>
-  <grammarly-desktop-integration
-    data-grammarly-shadow-root="true"
-  ></grammarly-desktop-integration>
 </html>

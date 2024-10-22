@@ -15,8 +15,13 @@
       out vec4 color2;
       uniform mat4 mv;
       uniform mat4 p;
+      uniform float time;
+
       void main() {
-          gl_Position = p * mv * position;
+          float jitterAmount = sin(time + float(gl_VertexID)) * 0.01; // Example jitter
+          vec4 jitteredPosition = position + vec4(jitterAmount, jitterAmount, 0.0, 0.0);
+
+          gl_Position = p * mv * jitteredPosition;
           color2 = color;
       }
     </script>
@@ -81,6 +86,9 @@
           uniforms[info.name] = gl.getUniformLocation(program, info.name);
         }
         program.uniforms = uniforms;
+
+        // Add time uniform
+        program.uniforms.time = gl.getUniformLocation(program, "time");
 
         return program;
       }
@@ -153,6 +161,40 @@
 
     <!-- All the other code in one big script element. -->
     <script>
+      var logo = {
+        triangles: [0, 1, 6, 7, 6, 0, 2, 3, 5, 4, 5, 3, 8, 10, 11, 8, 9, 10],
+        attributes: [
+          [
+            [0, 0],
+            [0, 0.075],
+            [0.025, 0.075],
+            [0.025, 0.1],
+            [-0.075, 0.1],
+            [-0.075, 0.075],
+            [-0.05, 0.075],
+            [-0.05, 0],
+            [-0.075, 0],
+            [-0.075, -0.025],
+            [0.025, -0.025],
+            [0.025, 0],
+          ],
+          [
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+            [1.0, 0.373, 0.02, 1],
+          ],
+        ],
+      };
+
       var tetrahedron = {
         triangles: [0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 2, 3],
         attributes: [
@@ -208,72 +250,25 @@
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.useProgram(program);
 
-        gl.bindVertexArray(geomT.vao);
-        gl.bindVertexArray(geomO.vao);
+        gl.bindVertexArray(geom.vao);
 
         gl.uniform4fv(program.uniforms.color, IlliniOrange);
 
         // the Sun
-        let m = m4rotY(seconds * 0.5);
-        let v = m4view([2, 1, 5], [0, 0, 0], [0, 1, 0]);
+
+        let v = m4view([0, 0, 1], [0, 0, 0], [0, 1, 0]);
+        let m = m4mul(m4scale(5, 5, 5), IdentityMatrix);
         gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m));
         gl.uniformMatrix4fv(program.uniforms.p, false, p);
-        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // the Earth
-        let m2 = m4mul(
-          m4rotY(seconds),
-          m4trans(2.5, 0, 0),
-          m4scale(0.5, 0.5, 0.5),
-          m4rotY(seconds * 3)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m2));
-        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // Mars
-        let m3 = m4mul(
-          m4rotY(seconds / 1.9),
-          m4trans(2.5 * 1.6, 0, 0),
-          m4scale(0.4, 0.4, 0.4),
-          m4rotY((seconds * 3) / 2.2)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m3));
-        gl.drawElements(geomO.mode, geomO.count, geomO.type, 0);
-
-        // the Moon
-        let m4 = m4mul(
-          m2,
-          m4rotY(seconds * 2),
-          m4trans(2.1, 0, 0),
-          m4scale(0.3, 0.3, 0.3)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m4));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
-
-        // Phobos
-        let m5 = m4mul(
-          m3,
-          m4rotY(seconds * 5),
-          m4trans(1.5, 0, 0),
-          m4scale(0.2, 0.2, 0.2)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m5));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
-
-        // Deimos
-        let m6 = m4mul(
-          m3,
-          m4rotY(seconds * 2.5),
-          m4trans(3, 0, 0),
-          m4scale(0.1, 0.1, 0.1)
-        );
-        gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m6));
-        gl.drawElements(geomT.mode, geomT.count, geomT.type, 0);
+        gl.drawElements(geom.mode, geom.count, geom.type, 0);
       }
 
       /** Compute any time-varying or animated aspects of the scene */
       function tick(milliseconds) {
         let seconds = milliseconds / 1000;
+
+        // Pass the time to the shader
+        gl.uniform1f(program.uniforms.time, seconds); // Set the time uniform
 
         draw(seconds);
         requestAnimationFrame(tick);
@@ -306,8 +301,7 @@
         let fs = document.querySelector("#frag").textContent.trim();
         window.program = compileShader(vs, fs);
         gl.enable(gl.DEPTH_TEST);
-        window.geomT = setupGeomery(tetrahedron);
-        window.geomO = setupGeomery(octahedron);
+        window.geom = setupGeomery(logo);
         fillScreen();
         window.addEventListener("resize", fillScreen);
         requestAnimationFrame(tick);

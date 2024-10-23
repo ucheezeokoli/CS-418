@@ -2,17 +2,12 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Terrain</title>
+  <title>Flight</title>
   <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
   <script src="wrapWebGL2.js"></script>
   <script src="math.js"></script>
 
 <body>
-  <form class="controls" action="javascript:void(0);">
-    <label>Grid size: <input id="gridsize" type="number" value="50" /></label>
-    <label>Faults: <input id="faults" type="number" value="50" /></label>
-    <input id="submit" type="submit" value="Regenerate Terrain" />
-  </form>
   <div class="display">
     <canvas width="300" height="300"></canvas>
   </div>
@@ -89,6 +84,7 @@
 <!-- All the other code in oe big script element. -->
 <script>
   function generateGrid(gridSize, faults, c = 1) {
+    console.log(gridSize, faults)
     const grid = {
       triangles: [],
       attributes: [
@@ -188,28 +184,6 @@
     return grid;
   }
 
-  function makeShape(rings, n, len, rad) {
-    var shape = { triangles: [], attributes: [[]] };
-
-    for (let ring = 0; ring <= rings; ring++) {
-      console.log(ring);
-      let y = (ring * len) / rings - len / 2;
-      for (let pt = 0; pt < n; pt++) {
-        let angle = (pt * Math.PI * 2) / n;
-        let x = Math.cos(angle) * rad;
-        let z = Math.sin(angle) * rad;
-        shape.attributes[0].push([x, y, z]);
-        if (ring > 0) {
-          let i = n * ring + pt;
-          let i1 = n * ring + ((pt + 1) % n);
-          shape.triangles.push([i, i - n, i1]);
-          shape.triangles.push([i1 - n, i - n, i]);
-        }
-      }
-    }
-    return shape;
-  }
-
   function rotateY(angle) {
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
@@ -229,7 +203,9 @@
   }
 
   /** Draw one frame */
-  function draw(seconds) {
+  function draw() {
+    console.log(position.x, position.y, position.z);
+
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(program);
 
@@ -237,41 +213,59 @@
 
     gl.uniform4fv(program.uniforms.color, earthTone);
 
-    // Camera position moving around the terrain
-    let eye = [
-      Math.sin(seconds / 2) * 1.75,
-      Math.cos(seconds / 2) * 1.75,
-      1,
-    ]; // Increase distance for better view
-    let viewPos = eye;
-    let normalEye = normalize(eye);
+    let v = m4view([1, 1, 1], [0, 0, 0], [0, 0, 1]);
+    let m = m4mul(m4trans(position.x, position.y, position.z), m4rotX(rotation.x));
 
-    let rotationMatrix = rotateY(seconds / 2);
+    if (keysBeingPressed["a"]) {
+
+      position.x -= 0.1;
+      position.y += 0.1;
+    }
+    if (keysBeingPressed["d"]) {
+      position.x += 0.1;
+      position.y -= 0.1;
+    }
+    if (keysBeingPressed["w"]) {
+      position.x += 0.1;
+      position.y += 0.1;
+      position.z += 0.1;
+    }
+    if (keysBeingPressed["s"]) {
+      position.x -= 0.1;
+      position.y -= 0.1;
+      position.z -= 0.1;
+    }
+    if (keysBeingPressed['ArrowUp']) {
+      rotation.x += 0.1;
+      let m = m4mul(m4trans(position.x, position.y, position.z), m4rotZ(rotation.x));
+      gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m));
+    }
+    if (keysBeingPressed['ArrowLeft']) {
+
+    }
+    if (keysBeingPressed['ArrowDown']) {
+
+    }
+    if (keysBeingPressed['ArrowRight']) {
+
+    }
+
+
+
+
+    gl.uniformMatrix4fv(program.uniforms.p, false, p);
+    gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m));
 
     // First light source coming from above, slightly angled
-    let ld = normalize((rotationMatrix, [0.0, -1.0, -1.0])); // Adjust light direction
+    let ld = normalize(([0.0, -1.0, -1.0])); // Adjust light direction
     gl.uniform3fv(program.uniforms.lightdir, ld);
     gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
 
-    // Send view position to shader for specular calculation
-    gl.uniform3fv(program.uniforms.viewPos, viewPos);
-
     // halfway normal 1
-    let h = normalize(add(ld, normalEye)); // Calculate halfway vector
+    let h = normalize(add(ld, [0, 0, 1])); // Calculate halfway vector
     gl.uniform3fv(program.uniforms.halfway, h);
 
-    let v = m4view(eye, [0, 0, 0], [0, 0, 1]);
-    gl.uniformMatrix4fv(program.uniforms.p, false, p);
-    gl.uniformMatrix4fv(program.uniforms.mv, false, v);
     gl.drawElements(geom.mode, geom.count, geom.type, 0);
-  }
-
-  /** Compute any time-varying or animated aspects of the scene */
-  function tick(milliseconds) {
-    let seconds = milliseconds / 1000;
-
-    draw(seconds);
-    requestAnimationFrame(tick);
   }
 
   /** Resizes the canvas to completely fill the screen */
@@ -290,14 +284,6 @@
     }
   }
 
-  document.querySelector("#submit").addEventListener("click", (event) => {
-    const gridsize = Number(document.querySelector("#gridsize").value) || 2;
-    const faults = Number(document.querySelector("#faults").value) || 0;
-    // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
-    window.geom = setupGeomery(generateGrid(gridsize, faults, 1));
-    requestAnimationFrame(tick);
-  });
-
   /** Compile, link, set up geometry */
   window.addEventListener("load", async (event) => {
     window.gl = document.querySelector("canvas").getContext(
@@ -311,8 +297,34 @@
     gl.enable(gl.DEPTH_TEST);
     fillScreen();
     window.addEventListener("resize", fillScreen);
-    // requestAnimationFrame(tick);
+
+    const gridsize = parseInt(Math.random() * 100);
+    const faults = gridsize * 2;
+    window.geom = setupGeomery(generateGrid(gridsize, faults, 1));
+    console.log(gridsize, faults)
+    window.position = {
+      x: 0,
+      y: 0,
+      z: 0,
+    };
+    window.rotation = {
+      x: 0,
+      y: 0,
+      z: 0,
+    }
+    draw()
   });
+
+  window.keysBeingPressed = {};
+  window.addEventListener("keydown", (event) => {
+    keysBeingPressed[event.key] = true;
+    console.log(event.key)
+    draw();
+  });
+  window.addEventListener(
+    "keyup",
+    (event) => (keysBeingPressed[event.key] = false)
+  );
 </script>
 
 <!-- Code I don't expect to change. -->

@@ -1,7 +1,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Terrain</title>
+    <title>Height Map</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
@@ -27,42 +27,84 @@
       uniform mat4 mv;
       uniform mat4 p;
       out vec3 vnormal;
+      out float height;
       void main() {
           gl_Position = p * mv * position;
           vnormal = mat3(mv) * normal;
+          height = position.z;
       }
     </script>
 
     <!-- The source code of a fragment shader. -->
     <script id="frag" type="glsl">
-      #version 300 es
-      precision highp float;
-      uniform vec4 color;
+        #version 300 es
+        precision highp float;
 
-      uniform vec3 lightdir;
-      uniform vec3 lightcolor;
-      uniform vec3 halfway;
+        uniform vec3 lightdir;
+        uniform vec3 lightcolor;
+        uniform vec3 halfway;
 
-      out vec4 fragColor;
-      in vec3 vnormal;
+        out vec4 fragColor;
+        in vec3 vnormal;
+        in float height;
 
-      void main() {
-          vec3 n = normalize(vnormal);
-          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
+        // Function to linearly interpolate between two colors
+        vec3 lerp(vec3 colorA, vec3 colorB, float t) {
+            return (1.0 - t) * colorA + t * colorB;
+        }
 
-          // Diffuse lighting calculation (lambert)
-          float lambert = max(dot(n, lightdir), 0.0);
+        // Function to get rainbow color smoothly based on normalized height
+        vec3 getRainbowColor(float normalizedHeight) {
+          // Wrap the height within 0.0 to 1.0 for repeating pattern
+          float wrappedHeight = mod(normalizedHeight, 1.0);
 
-          // Specular lighting calculation (Blinn-Phong)
-          float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
+          // Define the rainbow colors with red at both ends for smooth transition
+          vec3 red = vec3(1.0, 0.0, 0.0);
+          vec3 orange = vec3(1.0, 0.5, 0.0);
+          vec3 yellow = vec3(1.0, 1.0, 0.0);
+          vec3 green = vec3(0.0, 1.0, 0.0);
+          vec3 blue = vec3(0.0, 0.0, 1.0);
+          vec3 indigo = vec3(0.29, 0.0, 0.51);
+          vec3 violet = vec3(0.5, 0.0, 0.5);
 
-          // Combine diffuse and specular components for both light sources
-          vec3 diffuseComponent = lambert * lightcolor * color.rgb;
-          vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
-
-          // Final fragment color
-          fragColor = vec4(diffuseComponent + specularComponent/1.5, color.a);
+          // Smooth interpolation with seamless red-violet transition
+          if (wrappedHeight < 1.0 / 7.0) {
+              return lerp(red, orange, wrappedHeight * 7.0);
+          } else if (wrappedHeight < 2.0 / 7.0) {
+              return lerp(orange, yellow, (wrappedHeight - 1.0 / 7.0) * 7.0);
+          } else if (wrappedHeight < 3.0 / 7.0) {
+              return lerp(yellow, green, (wrappedHeight - 2.0 / 7.0) * 7.0);
+          } else if (wrappedHeight < 4.0 / 7.0) {
+              return lerp(green, blue, (wrappedHeight - 3.0 / 7.0) * 7.0);
+          } else if (wrappedHeight < 5.0 / 7.0) {
+              return lerp(blue, indigo, (wrappedHeight - 4.0 / 7.0) * 7.0);
+          } else if (wrappedHeight < 6.0 / 7.0) {
+              return lerp(indigo, violet, (wrappedHeight - 5.0 / 7.0) * 7.0);
+          } else {
+              return lerp(violet, red, (wrappedHeight - 6.0 / 7.0) * 7.0);  // Smooth transition from violet back to red
+          }
       }
+
+
+        void main() {
+            vec3 n = normalize(vnormal);
+
+            // Get the material color based on normalized height
+            vec3 materialColor = getRainbowColor(height);
+
+            // Diffuse lighting calculation (Lambert)
+            float lambert = max(dot(n, lightdir), 0.0);
+
+            // Specular lighting calculation (Blinn-Phong)
+            float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
+
+            // Combine diffuse and specular components
+            vec3 diffuseComponent = lambert * lightcolor * materialColor;
+            vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
+
+            // Final fragment color
+            fragColor = vec4(diffuseComponent + specularComponent, 1.0);  // Ensure alpha is 1.0
+        }
     </script>
 
     <!-- (lightcolor * blinn +  lightcolor2 * blinn2) * 2.0 -->
@@ -73,17 +115,17 @@
         const grid = {
           triangles: [],
           attributes: [
-            [], // positions (x, y, z) with z as the up direction
+            [], // positions (x, y, z)
             [], // normals (nx, ny, nz)
           ],
         };
 
-        // Step 1: Generate positions with z as the up direction
+        // Step 1: Generate positions
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const x = (col / gridSize) * 2 - 1; // Normalize column to [-1, 1]
             const y = (row / gridSize) * 2 - 1; // Normalize row to [-1, 1]
-            const z = 0; // Flat grid initially with z as the height
+            const z = 0; // Flat grid initially
             grid.attributes[0].push([x, y, z]);
           }
         }
@@ -96,12 +138,14 @@
             const bottomLeft = (row + 1) * (gridSize + 1) + col;
             const bottomRight = bottomLeft + 1;
 
+            // First triangle (top-left, bottom-left, top-right)
             grid.triangles.push(topLeft, bottomLeft, topRight);
+            // Second triangle (top-right, bottom-left, bottom-right)
             grid.triangles.push(topRight, bottomLeft, bottomRight);
           }
         }
 
-        // Step 3: Apply fault displacements with z as the up direction
+        // Step 3: Apply more frequent fault displacements with high volatility
         for (let i = 0; i < faults; i++) {
           const a = Math.random() * 2 - 1;
           const b = Math.random() * 2 - 1;
@@ -111,11 +155,11 @@
           grid.attributes[0].forEach((vertex) => {
             const [x, y] = vertex;
             const value = a * x + b * y - c;
-            vertex[2] += value > 0 ? displacement : -displacement; // Apply displacement on z
+            vertex[2] += value > 0 ? displacement : -displacement; // Larger variations
           });
         }
 
-        // Step 4: Normalize heights for z
+        // Step 4: Normalize heights
         let minZ = Infinity,
           maxZ = -Infinity;
 
@@ -126,10 +170,10 @@
         });
 
         grid.attributes[0].forEach((vertex) => {
-          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ); // Normalize z
+          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ);
         });
 
-        // Step 5: Compute grid-based normals with z as up
+        // Step 5: Compute grid-based normals
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const index = row * (gridSize + 1) + col;
@@ -143,6 +187,7 @@
             const ns = [n[0] - s[0], n[1] - s[1], n[2] - s[2]];
             const we = [w[0] - e[0], w[1] - e[1], w[2] - e[2]];
 
+            // Cross product (n-s) x (w-e) to compute the normal
             const nx = ns[1] * we[2] - ns[2] * we[1];
             const ny = ns[2] * we[0] - ns[0] * we[2];
             const nz = ns[0] * we[1] - ns[1] * we[0];
@@ -155,7 +200,7 @@
             ]);
           }
         }
-
+        console.log(grid);
         return grid;
       }
 

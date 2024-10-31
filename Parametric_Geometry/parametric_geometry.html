@@ -1,18 +1,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Terrain</title>
+    <title>Parametric Geometry</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
 
     <body>
       <form class="controls" action="javascript:void(0);">
-        <label
-          >Grid size: <input id="gridsize" type="number" value="50"
-        /></label>
-        <label>Faults: <input id="faults" type="number" value="50" /></label>
-        <input id="submit" type="submit" value="Regenerate Terrain" />
+        <label>Rings: <input id="rings" type="number" value="2" /></label>
+        <label>Slices: <input id="slices" type="number" value="3" /></label>
+        <label>Torus: <input id="torus" type="checkbox" /></label>
+        <input id="submit" type="submit" value="Make Object" />
       </form>
       <div class="display">
         <canvas width="300" height="300"></canvas>
@@ -69,94 +68,101 @@
 
     <!-- All the other code in oe big script element. -->
     <script>
-      function generateGrid(gridSize, faults, c = 1) {
-        const grid = {
+      function generateShape(rings, slices, isTorus) {
+        const majorRadius = 1.0; // Fixed major radius (e.g., distance from torus center to center of tube)
+        const minorRadius = 0.4; // Fixed minor radius (e.g., radius of the tube itself)
+
+        const shape = {
           triangles: [],
           attributes: [
-            [], // positions (x, y, z) with z as the up direction
-            [], // normals (nx, ny, nz)
+            [], // positions as [[x, y, z]]
+            [], // normals as [[nx, ny, nz]]
           ],
         };
 
-        // Step 1: Generate positions with z as the up direction
-        for (let row = 0; row <= gridSize; row++) {
-          for (let col = 0; col <= gridSize; col++) {
-            const x = (col / gridSize) * 2 - 1; // Normalize column to [-1, 1]
-            const y = (row / gridSize) * 2 - 1; // Normalize row to [-1, 1]
-            const z = 0; // Flat grid initially with z as the height
-            grid.attributes[0].push([x, y, z]);
+        // Generate sphere or torus based on isTorus flag
+        if (isTorus) {
+          for (let ring = 0; ring < rings; ring++) {
+            const theta = (ring * 2 * Math.PI) / rings; // Ring angle around the major radius
+
+            for (let slice = 0; slice < slices; slice++) {
+              const phi = (slice * 2 * Math.PI) / slices; // Slice angle around the minor radius
+
+              // Adjusted position to make the torus horizontal
+              const x =
+                (majorRadius + minorRadius * Math.cos(theta)) * Math.cos(phi);
+              const z =
+                (majorRadius + minorRadius * Math.cos(theta)) * Math.sin(phi);
+              const y = minorRadius * Math.sin(theta);
+
+              const position = [x, y, z];
+              shape.attributes[0].push(position);
+
+              // Adjusted normal to align with new orientation
+              const nx = Math.cos(theta) * Math.cos(phi);
+              const nz = Math.cos(theta) * Math.sin(phi);
+              const ny = Math.sin(theta);
+              const normal = [nx, ny, nz];
+              shape.attributes[1].push(normal);
+            }
+          }
+
+          // Torus triangles remain the same
+          for (let ring = 0; ring < rings; ring++) {
+            for (let slice = 0; slice < slices; slice++) {
+              const nextRing = (ring + 1) % rings;
+              const nextSlice = (slice + 1) % slices;
+
+              // Define triangles as pairs for each quad
+              const a = ring * slices + slice;
+              const b = nextRing * slices + slice;
+              const c = ring * slices + nextSlice;
+              const d = nextRing * slices + nextSlice;
+
+              shape.triangles.push([a, b, c]);
+              shape.triangles.push([b, d, c]);
+            }
+          }
+        } else {
+          // Helper function to convert spherical to Cartesian coordinates
+          function getCartesian(theta, phi) {
+            const x = Math.sin(theta) * Math.cos(phi);
+            const y = Math.cos(theta);
+            const z = Math.sin(theta) * Math.sin(phi);
+            return [x, y, z];
+          }
+
+          // Create vertices and normals
+          for (let ring = 0; ring <= rings; ring++) {
+            const theta = (ring * Math.PI) / rings; // Polar angle from 0 to π
+
+            for (let slice = 0; slice <= slices; slice++) {
+              const phi = (slice * 2 * Math.PI) / slices; // Azimuthal angle from 0 to 2π
+
+              const position = getCartesian(theta, phi);
+
+              // Position and normal are the same for a unit sphere
+              shape.attributes[0].push(position); // Add [x, y, z] for position
+              shape.attributes[1].push(position); // Add [nx, ny, nz] for normal
+            }
+          }
+
+          // Create triangles
+          for (let ring = 0; ring < rings; ring++) {
+            console.log(ring);
+            for (let slice = 0; slice < slices; slice++) {
+              const a = ring * (slices + 1) + slice;
+              const b = a + slices + 1;
+
+              // Two triangles per quad
+              shape.triangles.push(a, b, a + 1);
+              shape.triangles.push(b, b + 1, a + 1);
+            }
           }
         }
 
-        // Step 2: Generate triangles (indices)
-        for (let row = 0; row < gridSize; row++) {
-          for (let col = 0; col < gridSize; col++) {
-            const topLeft = row * (gridSize + 1) + col;
-            const topRight = topLeft + 1;
-            const bottomLeft = (row + 1) * (gridSize + 1) + col;
-            const bottomRight = bottomLeft + 1;
-
-            grid.triangles.push(topLeft, bottomLeft, topRight);
-            grid.triangles.push(topRight, bottomLeft, bottomRight);
-          }
-        }
-
-        // Step 3: Apply fault displacements with z as the up direction
-        for (let i = 0; i < faults; i++) {
-          const a = Math.random() * 2 - 1;
-          const b = Math.random() * 2 - 1;
-          const c = Math.random() * 2 - 1;
-          const displacement = Math.random() * 0.2 - 0.1; // Increased volatility
-
-          grid.attributes[0].forEach((vertex) => {
-            const [x, y] = vertex;
-            const value = a * x + b * y - c;
-            vertex[2] += value > 0 ? displacement : -displacement; // Apply displacement on z
-          });
-        }
-
-        // Step 4: Normalize heights for z
-        let minZ = Infinity,
-          maxZ = -Infinity;
-
-        grid.attributes[0].forEach((vertex) => {
-          const z = vertex[2];
-          if (z < minZ) minZ = z;
-          if (z > maxZ) maxZ = z;
-        });
-
-        grid.attributes[0].forEach((vertex) => {
-          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ); // Normalize z
-        });
-
-        // Step 5: Compute grid-based normals with z as up
-        for (let row = 0; row <= gridSize; row++) {
-          for (let col = 0; col <= gridSize; col++) {
-            const index = row * (gridSize + 1) + col;
-            const v = grid.attributes[0][index];
-            const s =
-              row < gridSize ? grid.attributes[0][index + (gridSize + 1)] : v;
-            const n = row > 0 ? grid.attributes[0][index - (gridSize + 1)] : v;
-            const w = col > 0 ? grid.attributes[0][index - 1] : v;
-            const e = col < gridSize ? grid.attributes[0][index + 1] : v;
-
-            const ns = [n[0] - s[0], n[1] - s[1], n[2] - s[2]];
-            const we = [w[0] - e[0], w[1] - e[1], w[2] - e[2]];
-
-            const nx = ns[1] * we[2] - ns[2] * we[1];
-            const ny = ns[2] * we[0] - ns[0] * we[2];
-            const nz = ns[0] * we[1] - ns[1] * we[0];
-
-            const magnitude = Math.sqrt(nx * nx + ny * ny + nz * nz);
-            grid.attributes[1].push([
-              nx / magnitude,
-              ny / magnitude,
-              nz / magnitude,
-            ]);
-          }
-        }
-
-        return grid;
+        console.log(shape);
+        return shape;
       }
 
       /** Draw one frame */
@@ -166,7 +172,7 @@
 
         gl.bindVertexArray(geom.vao);
 
-        gl.uniform4fv(program.uniforms.color, earthTone);
+        gl.uniform4fv(program.uniforms.color, IlliniOrange);
 
         // Camera position moving around the terrain
         let eye = [
@@ -176,12 +182,12 @@
         ]; // Increase distance for better view
 
         // First light source coming from above, slightly angled
-        let ld = normalize([-1, -1, -3]); // Adjust light direction
+        let ld = normalize([1, 1, 3]); // Adjust light direction
         gl.uniform3fv(program.uniforms.lightdir, ld);
         gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
 
         // halfway normal 1
-        let h = normalize(add(ld, [1, 1, -3])); // Calculate halfway vector
+        let h = normalize(add(ld, [1, 1, 3])); // Calculate halfway vector
         gl.uniform3fv(program.uniforms.halfway, h);
 
         let v = m4view(eye, [0, 0, 0], [0, 0, 1]);
@@ -215,10 +221,11 @@
       }
 
       document.querySelector("#submit").addEventListener("click", (event) => {
-        const gridsize = Number(document.querySelector("#gridsize").value) || 2;
-        const faults = Number(document.querySelector("#faults").value) || 0;
+        const rings = Number(document.querySelector("#rings").value) || 2;
+        const slices = Number(document.querySelector("#slices").value) || 3;
+        const torus = document.querySelector("#torus").checked;
         // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
-        window.geom = setupGeomery(generateGrid(gridsize, faults, 1));
+        window.geom = setupGeomery(generateShape(rings, slices, torus));
         requestAnimationFrame(tick);
       });
 

@@ -1,7 +1,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Terrain</title>
+    <title>Weathering</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
@@ -12,6 +12,9 @@
           >Grid size: <input id="gridsize" type="number" value="50"
         /></label>
         <label>Faults: <input id="faults" type="number" value="50" /></label>
+        <label
+          >Weathering: <input id="weathering" type="number" value="0"
+        /></label>
         <input id="submit" type="submit" value="Regenerate Terrain" />
       </form>
       <div class="display">
@@ -48,7 +51,6 @@
 
       void main() {
           vec3 n = normalize(vnormal);
-          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
 
           // Diffuse lighting calculation (lambert)
           float lambert = max(dot(n, lightdir), 0.0);
@@ -69,21 +71,26 @@
 
     <!-- All the other code in oe big script element. -->
     <script>
-      function generateGrid(gridSize, faults, c = 1) {
+      function generateAndSmoothGrid(
+        gridSize,
+        faults,
+        weatheringIterations,
+        c = 1
+      ) {
         const grid = {
           triangles: [],
           attributes: [
-            [], // positions (x, y, z) with z as the up direction
+            [], // positions (x, y, z)
             [], // normals (nx, ny, nz)
           ],
         };
 
-        // Step 1: Generate positions with z as the up direction
+        // Step 1: Generate positions
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const x = (col / gridSize) * 2 - 1; // Normalize column to [-1, 1]
             const y = (row / gridSize) * 2 - 1; // Normalize row to [-1, 1]
-            const z = 0; // Flat grid initially with z as the height
+            const z = 0; // Flat grid initially
             grid.attributes[0].push([x, y, z]);
           }
         }
@@ -96,26 +103,28 @@
             const bottomLeft = (row + 1) * (gridSize + 1) + col;
             const bottomRight = bottomLeft + 1;
 
+            // First triangle (top-left, bottom-left, top-right)
             grid.triangles.push(topLeft, bottomLeft, topRight);
+            // Second triangle (top-right, bottom-left, bottom-right)
             grid.triangles.push(topRight, bottomLeft, bottomRight);
           }
         }
 
-        // Step 3: Apply fault displacements with z as the up direction
+        // Step 3: Apply fault displacements
         for (let i = 0; i < faults; i++) {
           const a = Math.random() * 2 - 1;
           const b = Math.random() * 2 - 1;
           const c = Math.random() * 2 - 1;
-          const displacement = Math.random() * 0.2 - 0.1; // Increased volatility
+          const displacement = Math.random() * 0.2 - 0.1;
 
           grid.attributes[0].forEach((vertex) => {
             const [x, y] = vertex;
             const value = a * x + b * y - c;
-            vertex[2] += value > 0 ? displacement : -displacement; // Apply displacement on z
+            vertex[2] += value > 0 ? displacement : -displacement;
           });
         }
 
-        // Step 4: Normalize heights for z
+        // Step 4: Normalize heights
         let minZ = Infinity,
           maxZ = -Infinity;
 
@@ -126,10 +135,39 @@
         });
 
         grid.attributes[0].forEach((vertex) => {
-          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ); // Normalize z
+          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ);
         });
 
-        // Step 5: Compute grid-based normals with z as up
+        // Step 5: Apply spheroidal smoothing
+        const positions = grid.attributes[0];
+
+        for (let n = 0; n < weatheringIterations; n++) {
+          const newHeights = [];
+
+          for (let i = 0; i < positions.length; i++) {
+            const neighbors = [];
+            const row = Math.floor(i / (gridSize + 1));
+            const col = i % (gridSize + 1);
+
+            if (row > 0) neighbors.push(positions[i - (gridSize + 1)]);
+            if (row < gridSize) neighbors.push(positions[i + (gridSize + 1)]);
+            if (col > 0) neighbors.push(positions[i - 1]);
+            if (col < gridSize) neighbors.push(positions[i + 1]);
+
+            const mean = neighbors.reduce((acc, vertex) => acc + vertex[2], 0);
+            const averageHeight = mean / neighbors.length;
+
+            newHeights[i] = (positions[i][2] + averageHeight) / 2;
+          }
+
+          for (let i = 0; i < positions.length; i++) {
+            positions[i][2] = newHeights[i];
+          }
+        }
+
+        // Step 6: Compute normals after smoothing
+        grid.attributes[1] = []; // Clear any previous normals
+
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const index = row * (gridSize + 1) + col;
@@ -143,6 +181,99 @@
             const ns = [n[0] - s[0], n[1] - s[1], n[2] - s[2]];
             const we = [w[0] - e[0], w[1] - e[1], w[2] - e[2]];
 
+            const nx = ns[1] * we[2] - ns[2] * we[1];
+            const ny = ns[2] * we[0] - ns[0] * we[2];
+            const nz = ns[0] * we[1] - ns[1] * we[0];
+
+            const magnitude = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            grid.attributes[1].push([
+              nx / magnitude,
+              ny / magnitude,
+              nz / magnitude,
+            ]);
+          }
+        }
+
+        return grid;
+      }
+
+      function generateGrid(gridSize, faults, c = 1) {
+        const grid = {
+          triangles: [],
+          attributes: [
+            [], // positions (x, y, z)
+            [], // normals (nx, ny, nz)
+          ],
+        };
+
+        // Step 1: Generate positions
+        for (let row = 0; row <= gridSize; row++) {
+          for (let col = 0; col <= gridSize; col++) {
+            const x = (col / gridSize) * 2 - 1; // Normalize column to [-1, 1]
+            const y = (row / gridSize) * 2 - 1; // Normalize row to [-1, 1]
+            const z = 0; // Flat grid initially
+            grid.attributes[0].push([x, y, z]);
+          }
+        }
+
+        // Step 2: Generate triangles (indices)
+        for (let row = 0; row < gridSize; row++) {
+          for (let col = 0; col < gridSize; col++) {
+            const topLeft = row * (gridSize + 1) + col;
+            const topRight = topLeft + 1;
+            const bottomLeft = (row + 1) * (gridSize + 1) + col;
+            const bottomRight = bottomLeft + 1;
+
+            // First triangle (top-left, bottom-left, top-right)
+            grid.triangles.push(topLeft, bottomLeft, topRight);
+            // Second triangle (top-right, bottom-left, bottom-right)
+            grid.triangles.push(topRight, bottomLeft, bottomRight);
+          }
+        }
+
+        // Step 3: Apply more frequent fault displacements with high volatility
+        for (let i = 0; i < faults; i++) {
+          const a = Math.random() * 2 - 1;
+          const b = Math.random() * 2 - 1;
+          const c = Math.random() * 2 - 1;
+          const displacement = Math.random() * 0.2 - 0.1; // Increased volatility
+
+          grid.attributes[0].forEach((vertex) => {
+            const [x, y] = vertex;
+            const value = a * x + b * y - c;
+            vertex[2] += value > 0 ? displacement : -displacement; // Larger variations
+          });
+        }
+
+        // Step 4: Normalize heights
+        let minZ = Infinity,
+          maxZ = -Infinity;
+
+        grid.attributes[0].forEach((vertex) => {
+          const z = vertex[2];
+          if (z < minZ) minZ = z;
+          if (z > maxZ) maxZ = z;
+        });
+
+        grid.attributes[0].forEach((vertex) => {
+          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ);
+        });
+
+        // Step 5: Compute grid-based normals
+        for (let row = 0; row <= gridSize; row++) {
+          for (let col = 0; col <= gridSize; col++) {
+            const index = row * (gridSize + 1) + col;
+            const v = grid.attributes[0][index];
+            const s =
+              row < gridSize ? grid.attributes[0][index + (gridSize + 1)] : v;
+            const n = row > 0 ? grid.attributes[0][index - (gridSize + 1)] : v;
+            const w = col > 0 ? grid.attributes[0][index - 1] : v;
+            const e = col < gridSize ? grid.attributes[0][index + 1] : v;
+
+            const ns = [n[0] - s[0], n[1] - s[1], n[2] - s[2]];
+            const we = [w[0] - e[0], w[1] - e[1], w[2] - e[2]];
+
+            // Cross product (n-s) x (w-e) to compute the normal
             const nx = ns[1] * we[2] - ns[2] * we[1];
             const ny = ns[2] * we[0] - ns[0] * we[2];
             const nz = ns[0] * we[1] - ns[1] * we[0];
@@ -217,8 +348,12 @@
       document.querySelector("#submit").addEventListener("click", (event) => {
         const gridsize = Number(document.querySelector("#gridsize").value) || 2;
         const faults = Number(document.querySelector("#faults").value) || 0;
+        const weathering =
+          Number(document.querySelector("#weathering").value) || 0;
         // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
-        window.geom = setupGeomery(generateGrid(gridsize, faults, 1));
+        window.geom = setupGeomery(
+          generateAndSmoothGrid(gridsize, faults, weathering)
+        );
         requestAnimationFrame(tick);
       });
 

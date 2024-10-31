@@ -35,46 +35,26 @@
       uniform vec3 lightdir;
       uniform vec3 lightcolor;
       uniform vec3 halfway;
-      uniform vec3 viewPos;   // Position of the camera (the view position)
-
-      uniform vec3 lightdir2;
-      uniform vec3 lightcolor2;
-      uniform vec3 halfway2;
 
       out vec4 fragColor;
       in vec3 vnormal;
 
       void main() {
           vec3 n = normalize(vnormal);
-          vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
-          vec3 viewDir = normalize(viewPos - vec3(0.0, 0.0, 0.0));  // Direction from fragment to camera
+          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
 
           // Diffuse lighting calculation (lambert)
-          float lambert = max(dot(n, normalizedLightDir), 0.0);
-          // float lambert = max(dot(n, lightdir), 0.0);
-          // float lambert2 = max(dot(n, lightdir2), 0.0);
+          float lambert = max(dot(n, lightdir), 0.0);
 
           // Specular lighting calculation (Blinn-Phong)
-          // vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0));  // Assume camera looks along Z-axis
-          vec3 halfwayDir = normalize(viewDir + normalizedLightDir);  // Halfway vector between light and view
-          float specular = pow(max(dot(n, halfwayDir), 0.0), 50.0);  // Adjust exponent for shininess
-
-          // float blinn = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust the exponent for specular sharpness
-          // float blinn2 = pow(max(dot(n, halfway2), 0.0), 150.0);
+          float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
 
           // Combine diffuse and specular components for both light sources
           vec3 diffuseComponent = lambert * lightcolor * color.rgb;
           vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
 
-          // vec3 diffuseComponent = color.rgb * (lightcolor * lambert + lightcolor2 * lambert2);
-          // vec3 specularComponent = vec3(1,1,1) * (blinn + blinn2);
-
           // Final fragment color
-          fragColor = vec4(diffuseComponent + specularComponent, color.a);
-          // fragColor = vec4((n * 0.5) + 0.5, 1.0);  // Visualize normals (from -1..1 to 0..1 range)
-          // fragColor = vec4(lambert * color.rgb, 1.0);  // No specular, just diffuse
-          // Debug: visualize light direction as color
-            // fragColor = vec4((lightdir * 0.5) + 0.5, 1.0);  // Convert [-1, 1] range to [0, 1]
+          fragColor = vec4(diffuseComponent + specularComponent/1.5, color.a);
       }
     </script>
 
@@ -183,120 +163,12 @@
         return grid;
       }
 
-      function rotateY(angle) {
-        const cosA = Math.cos(angle);
-        const sinA = Math.sin(angle);
-        return [
-          [cosA, 0, sinA],
-          [0, 1, 0],
-          [-sinA, 0, cosA],
-        ];
-      }
-
-      function applyRotation(matrix, vec) {
-        return [
-          matrix[0][0] * vec[0] + matrix[0][1] * vec[1] + matrix[0][2] * vec[2],
-          matrix[1][0] * vec[0] + matrix[1][1] * vec[1] + matrix[1][2] * vec[2],
-          matrix[2][0] * vec[0] + matrix[2][1] * vec[1] + matrix[2][2] * vec[2],
-        ];
-      }
-
-      // function draw() {
-      //   console.log(position.x, position.y, position.z);
-
-      //   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      //   gl.useProgram(program);
-
-      //   gl.bindVertexArray(geom.vao);
-
-      //   gl.uniform4fv(program.uniforms.color, earthTone);
-
-      //   // Camera orientation (yaw and pitch)
-      //   let cameraFront = [
-      //     Math.cos(cameraYaw) * Math.cos(cameraPitch),
-      //     Math.sin(cameraPitch),
-      //     Math.sin(cameraYaw) * Math.cos(cameraPitch),
-      //   ];
-      //   let cameraRight = cross(cameraFront, [0, 1, 0]); // Cross with world up
-      //   let cameraUp = cross(cameraRight, cameraFront);
-
-      //   // Update view matrix based on camera orientation
-      //   let v = m4view(
-      //     [position.x, position.y, position.z],
-      //     add([position.x, position.y, position.z], cameraFront),
-      //     cameraUp
-      //   );
-
-      //   // // Update model matrix
-      //   // let m = m4mul(
-      //   //   m4trans(position.x, position.y, position.z),
-      //   //   m4rotX(rotation.x)
-      //   // );
-
-      //   // Handle WASD movement
-      //   if (keysBeingPressed["a"]) {
-      //     position = sub(
-      //       [position.x, position.y, position.z],
-      //       mul(cameraRight, 0.1)
-      //     ); // Strafe left
-      //   }
-      //   if (keysBeingPressed["d"]) {
-      //     position = add(
-      //       [position.x, position.y, position.z],
-      //       mul(cameraRight, 0.1)
-      //     ); // Strafe right
-      //   }
-      //   if (keysBeingPressed["w"]) {
-      //     position = add(
-      //       [position.x, position.y, position.z],
-      //       mul(cameraFront, 0.1)
-      //     ); // Move forward
-      //   }
-      //   if (keysBeingPressed["s"]) {
-      //     position = sub(
-      //       [position.x, position.y, position.z],
-      //       mul(cameraFront, 0.1)
-      //     ); // Move backward
-      //   }
-
-      //   // Handle arrow key rotation for pitch and yaw
-      //   if (keysBeingPressed["ArrowUp"]) {
-      //     cameraPitch += 0.05; // Pitch up
-      //     if (cameraPitch > Math.PI / 2) cameraPitch = Math.PI / 2; // Clamp pitch
-      //   }
-      //   if (keysBeingPressed["ArrowDown"]) {
-      //     cameraPitch -= 0.05; // Pitch down
-      //     if (cameraPitch < -Math.PI / 2) cameraPitch = -Math.PI / 2; // Clamp pitch
-      //   }
-      //   if (keysBeingPressed["ArrowLeft"]) {
-      //     cameraYaw -= 0.05; // Yaw left
-      //   }
-      //   if (keysBeingPressed["ArrowRight"]) {
-      //     cameraYaw += 0.05; // Yaw right
-      //   }
-
-      //   // Set matrices to the shader
-      //   gl.uniformMatrix4fv(program.uniforms.p, false, p);
-      //   gl.uniformMatrix4fv(program.uniforms.mv, false, v);
-
-      //   // First light source coming from above, slightly angled
-      //   let ld = normalize([0.0, -1.0, -1.0]); // Adjust light direction
-      //   gl.uniform3fv(program.uniforms.lightdir, ld);
-      //   gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
-
-      //   // halfway normal 1
-      //   let h = normalize(add(ld, [0, 0, 1])); // Calculate halfway vector
-      //   gl.uniform3fv(program.uniforms.halfway, h);
-
-      //   gl.drawElements(geom.mode, geom.count, geom.type, 0);
-      // }
-
       // /** Draw one frame */
-      function draw() {
+      function draw(seconds) {
         console.log("position", position.x, position.y, position.z);
         console.log("rotation", rotation.x, rotation.y);
 
-        const translationSpeed = 0.1; // Adjust for slower translation
+        const translationSpeed = 0.01; // Adjust for slower translation
         const rotationSpeed = 0.01; // Adjust for slower rotation
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -315,36 +187,7 @@
         let cameraRight = cross(cameraFront, [0, 1, 0]); // Cross with world up
         let cameraUp = cross(cameraRight, cameraFront);
 
-        // let v = m4view([1, 1, 1], [0, 0, 0], [0, 0, 1]);
-        // let v = m4view(
-        //   [position.x, position.y, position.z],
-        //   add([position.x, position.y, position.z], cameraFront),
-        //   [0, 0, 1]
-        // );
-
-        // Calculate forward vector based on current yaw (rotation.y) and pitch (rotation.x)
-        let cosPitch = Math.cos(rotation.x); // pitch (up/down)
-        let sinPitch = Math.sin(rotation.x);
-        let cosYaw = Math.cos(rotation.y); // yaw (left/right)
-        let sinYaw = Math.sin(rotation.y);
-
-        // Forward vector (where the camera is looking)
-        let forward = [
-          cosYaw * cosPitch, // x component
-          sinPitch, // z component (since y and z are swapped in your case)
-          sinYaw * cosPitch, // y component
-        ];
-
-        // // Camera's view matrix
-        // let v = m4view(
-        //   [position.x, position.z, position.y], // camera position (with swapped y and z)
-        //   [
-        //     position.x + forward[0], // target x (position + forward direction)
-        //     position.z + forward[1], // target z (position + forward direction)
-        //     position.y + forward[2], // target y (position + forward direction)
-        //   ],
-        //   [0, 0, 1] // constant up vector (assuming Z is up)
-        // );
+        // Calculate forward vecto
 
         let v = m4view(
           [position.x, position.z, position.y], // camera position
@@ -356,89 +199,31 @@
           [0, 0, 1] // up vector
         );
 
-        // // Translation: w/s/a/d
-        // if (event.key === "w") {
-        //   // Move forward in the direction the camera is looking
-        //   position.x -= Math.sin(rotation.y) * translationSpeed;
-        //   position.z -= Math.cos(rotation.y) * translationSpeed;
-        // }
-        // if (event.key === "s") {
-        //   // Move backward
-        //   position.x += Math.sin(rotation.y) * translationSpeed;
-        //   position.z += Math.cos(rotation.y) * translationSpeed;
-        // }
-        // if (event.key === "a") {
-        //   // Move left
-        //   position.x -= Math.cos(rotation.y) * translationSpeed;
-        //   position.z += Math.sin(rotation.y) * translationSpeed;
-        // }
-        // if (event.key === "d") {
-        //   // Move right
-        //   position.x += Math.cos(rotation.y) * translationSpeed;
-        //   position.z -= Math.sin(rotation.y) * translationSpeed;
-        // }
-
-        // // Rotation: Arrow keys for pitch/yaw
-        // if (event.key === "ArrowUp") {
-        //   // Look up (pitch up)
-        //   rotation.x = Math.max(
-        //     rotation.x - rotationSpeed,
-        //     -Math.PI / 2
-        //   );
-        // }
-        // if (event.key === "ArrowDown") {
-        //   // Look down (pitch down)
-        //   rotation.x = Math.min(
-        //     rotation.x + rotationSpeed,
-        //     Math.PI / 2
-        //   );
-        // }
-        // if (event.key === "ArrowLeft") {
-        //   // Turn left (yaw left)
-        //   rotation.y -= rotationSpeed;
-        // }
-        // if (event.key === "ArrowRight") {
-        //   // Turn right (yaw right)
-        //   rotation.y += rotationSpeed;
-        // }
-
         if (keysBeingPressed["a"]) {
-          position.z += 0.05;
-          position.x -= 0.05;
+          position.x += cameraRight[0] * translationSpeed;
+          position.z += cameraRight[2] * translationSpeed;
         }
         if (keysBeingPressed["d"]) {
-          position.z -= 0.05;
-          position.x += 0.05;
+          position.x -= cameraRight[0] * translationSpeed;
+          position.z -= cameraRight[2] * translationSpeed;
         }
         if (keysBeingPressed["w"]) {
           position.x += cameraFront[0] * translationSpeed;
           position.z += cameraFront[2] * translationSpeed; // Use z for camera position
           position.y += cameraFront[1] * translationSpeed;
-          // position.x += 0.05;
-          // // position.x += 0.05;
-          // // position.y += 0.05;
-          // position.z += 0.05;
         }
         if (keysBeingPressed["s"]) {
           position.x -= cameraFront[0] * translationSpeed;
           position.z -= cameraFront[2] * translationSpeed;
           position.y -= cameraFront[1] * translationSpeed;
-
-          // position.x -= 0.05;
-
-          // // position.x -= 0.05;
-          // // position.y -= 0.05;
-          // position.z -= 0.05;
         }
 
         // Keyboard controls for rotation (pitch and yaw)
         if (keysBeingPressed["ArrowUp"]) {
           rotation.x += 0.05; // pitch up
-          // if (rotation.x > Math.PI / 2) rotation.x = Math.PI / 2;
         }
         if (keysBeingPressed["ArrowDown"]) {
           rotation.x -= 0.05; // pitch down
-          // if (rotation.x < -Math.PI / 2) rotation.x = -Math.PI / 2;
         }
         if (keysBeingPressed["ArrowLeft"]) {
           rotation.y += 0.05; // yaw left
@@ -451,15 +236,22 @@
         gl.uniformMatrix4fv(program.uniforms.mv, false, v);
 
         // First light source coming from above, slightly angled
-        let ld = normalize([0.0, -1.0, -1.0]); // Adjust light direction
+        let ld = normalize([-1, -1, -3]); // Adjust light direction
         gl.uniform3fv(program.uniforms.lightdir, ld);
         gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
 
-        // halfway normal 1
-        let h = normalize(add(ld, [0, 0, 1])); // Calculate halfway vector
+        // halfway normal
+        let h = normalize(add(ld, [1, 1, -3])); // Calculate halfway vector
         gl.uniform3fv(program.uniforms.halfway, h);
 
         gl.drawElements(geom.mode, geom.count, geom.type, 0);
+      }
+
+      function tick(milliseconds) {
+        let seconds = milliseconds / 1000;
+
+        draw(seconds);
+        requestAnimationFrame(tick);
       }
 
       /** Resizes the canvas to completely fill the screen */
@@ -507,18 +299,18 @@
         };
         window.cameraPitch = 0;
         window.cameraYaw = 0;
-        draw();
+        requestAnimationFrame(tick);
       });
 
       window.keysBeingPressed = {};
       window.addEventListener("keydown", (event) => {
         keysBeingPressed[event.key] = true;
         console.log(event.key);
-        draw();
+        requestAnimationFrame(tick);
       });
       window.addEventListener("keyup", (event) => {
         keysBeingPressed[event.key] = false;
-        draw();
+        requestAnimationFrame(tick);
       });
     </script>
 

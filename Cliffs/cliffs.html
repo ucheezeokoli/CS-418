@@ -1,7 +1,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Terrain</title>
+    <title>Cliffs</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
@@ -27,41 +27,64 @@
       uniform mat4 mv;
       uniform mat4 p;
       out vec3 vnormal;
+      out float upComp;
+      out mat3 m;
+
       void main() {
           gl_Position = p * mv * position;
-          vnormal = mat3(mv) * normal;
+          vnormal = normalize(normal); // Normalize the transformed normal
+          upComp = vnormal.y; // Calculate the upward component from the transformed normal
+          m = mat3(mv);
       }
     </script>
 
     <!-- The source code of a fragment shader. -->
     <script id="frag" type="glsl">
-      #version 300 es
+            #version 300 es
       precision highp float;
-      uniform vec4 color;
 
-      uniform vec3 lightdir;
-      uniform vec3 lightcolor;
-      uniform vec3 halfway;
-
+      uniform vec4 color;  // This can be used for transparency if needed
+      uniform vec3 lightdir; // Direction of the light source
+      uniform vec3 lightcolor; // Color of the light source
       out vec4 fragColor;
       in vec3 vnormal;
+      in float upComp;
+      in mat3 m;
 
       void main() {
-          vec3 n = normalize(vnormal);
-          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
+          vec3 n = normalize(vnormal) * m;
 
-          // Diffuse lighting calculation (lambert)
-          float lambert = max(dot(n, lightdir), 0.0);
+          // Define the threshold for the crisp boundary
+          float threshold = 0.0; // This ensures an apparent change in materials
+
+          // Determine the material based on the upward component
+          vec3 materialColor;
+          float shininess;
+
+          // Use a step function to create a crisp boundary
+          if (upComp > threshold) {
+              // Shallow slope material (Green)
+              materialColor = vec3(0.2, 0.6, 0.1);
+              shininess = 80.0;  // Smaller shininess for bright spots
+          } else {
+              // Steep slope material (Red)
+              materialColor = vec3(0.6, 0.3, 0.3);
+              shininess = 20.0;  // Larger shininess for dimmer spots
+          }
+
+          // Diffuse lighting calculation (Lambert)
+          float lambert = max(dot(m*n, lightdir), 0.0);
 
           // Specular lighting calculation (Blinn-Phong)
-          float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
+          vec3 halfway = normalize(lightdir + vec3(0.0, 0.0, 1.0)); // Adjust the view direction as needed
+          float specular = pow(max(dot(m*n, halfway), 0.0), shininess); // Use the adjusted shininess
 
-          // Combine diffuse and specular components for both light sources
-          vec3 diffuseComponent = lambert * lightcolor * color.rgb;
-          vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
+          // Combine diffuse and specular components
+          vec3 diffuseComponent = lambert * lightcolor * materialColor;
+          vec3 specularComponent = specular * vec3(1.0); // White specular highlight
 
           // Final fragment color
-          fragColor = vec4(diffuseComponent + specularComponent/1.5, color.a);
+          fragColor = vec4(diffuseComponent + specularComponent, color.a); // Ensure alpha is 1.0
       }
     </script>
 
@@ -73,17 +96,17 @@
         const grid = {
           triangles: [],
           attributes: [
-            [], // positions (x, y, z) with z as the up direction
+            [], // positions (x, y, z)
             [], // normals (nx, ny, nz)
           ],
         };
 
-        // Step 1: Generate positions with z as the up direction
+        // Step 1: Generate positions
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const x = (col / gridSize) * 2 - 1; // Normalize column to [-1, 1]
             const y = (row / gridSize) * 2 - 1; // Normalize row to [-1, 1]
-            const z = 0; // Flat grid initially with z as the height
+            const z = 0; // Flat grid initially
             grid.attributes[0].push([x, y, z]);
           }
         }
@@ -96,12 +119,14 @@
             const bottomLeft = (row + 1) * (gridSize + 1) + col;
             const bottomRight = bottomLeft + 1;
 
+            // First triangle (top-left, bottom-left, top-right)
             grid.triangles.push(topLeft, bottomLeft, topRight);
+            // Second triangle (top-right, bottom-left, bottom-right)
             grid.triangles.push(topRight, bottomLeft, bottomRight);
           }
         }
 
-        // Step 3: Apply fault displacements with z as the up direction
+        // Step 3: Apply more frequent fault displacements with high volatility
         for (let i = 0; i < faults; i++) {
           const a = Math.random() * 2 - 1;
           const b = Math.random() * 2 - 1;
@@ -111,11 +136,11 @@
           grid.attributes[0].forEach((vertex) => {
             const [x, y] = vertex;
             const value = a * x + b * y - c;
-            vertex[2] += value > 0 ? displacement : -displacement; // Apply displacement on z
+            vertex[2] += value > 0 ? displacement : -displacement; // Larger variations
           });
         }
 
-        // Step 4: Normalize heights for z
+        // Step 4: Normalize heights
         let minZ = Infinity,
           maxZ = -Infinity;
 
@@ -126,10 +151,10 @@
         });
 
         grid.attributes[0].forEach((vertex) => {
-          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ); // Normalize z
+          vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ);
         });
 
-        // Step 5: Compute grid-based normals with z as up
+        // Step 5: Compute grid-based normals
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             const index = row * (gridSize + 1) + col;
@@ -143,6 +168,7 @@
             const ns = [n[0] - s[0], n[1] - s[1], n[2] - s[2]];
             const we = [w[0] - e[0], w[1] - e[1], w[2] - e[2]];
 
+            // Cross product (n-s) x (w-e) to compute the normal
             const nx = ns[1] * we[2] - ns[2] * we[1];
             const ny = ns[2] * we[0] - ns[0] * we[2];
             const nz = ns[0] * we[1] - ns[1] * we[0];

@@ -1,7 +1,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Flight</title>
+    <title>Drive</title>
     <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
     <script src="wrapWebGL2.js"></script>
     <script src="math.js"></script>
@@ -63,18 +63,17 @@
     <!-- All the other code in oe big script element. -->
     <script>
       function generateGrid(gridSize, faults, c = 1) {
-        console.log(gridSize, faults);
         const grid = {
           triangles: [],
           attributes: [
             [], // positions (x, y, z)
-            // [], // colors (r, g, b)
             [], // normals (nx, ny, nz)
           ],
         };
-        // Step 1: Generate positions and colors
-        const earthTone = [139 / 255, 69 / 255, 19 / 255];
+        // Array to store terrain heights
+        const heights = [];
 
+        // Step 1: Generate positions and colors
         for (let row = 0; row <= gridSize; row++) {
           for (let col = 0; col <= gridSize; col++) {
             // Position: Spread points evenly in range -1 to 1 on the X and Y axes, Z=0 (flat)
@@ -83,9 +82,7 @@
             const z = 0; // Flat grid initially
 
             grid.attributes[0].push([x, y, z]);
-
-            // Use the earth tone color for all vertices
-            // grid.attributes[1].push([...earthTone]);
+            heights.push(z); // Store initial height (z = 0)
           }
         }
 
@@ -111,10 +108,11 @@
           const c = Math.random() * 2 - 1;
           const displacement = (1 / (i + 1)) * 0.05;
 
-          grid.attributes[0].forEach((vertex) => {
+          grid.attributes[0].forEach((vertex, index) => {
             const [x, y] = vertex;
             const value = a * x + b * y - c;
             vertex[2] += value > 0 ? displacement : -displacement;
+            heights[index] = vertex[2]; // Update the height at this vertex
           });
         }
 
@@ -122,14 +120,14 @@
         let minZ = Infinity,
           maxZ = -Infinity;
 
-        grid.attributes[0].forEach((vertex) => {
-          const z = vertex[2];
+        heights.forEach((z) => {
           if (z < minZ) minZ = z;
           if (z > maxZ) maxZ = z;
         });
 
-        grid.attributes[0].forEach((vertex) => {
+        grid.attributes[0].forEach((vertex, index) => {
           vertex[2] = (c * (vertex[2] - 0.5 * (maxZ + minZ))) / (maxZ - minZ);
+          heights[index] = vertex[2]; // Update the normalized height
         });
 
         // Step 5: Compute grid-based normals
@@ -159,14 +157,95 @@
             ]);
           }
         }
-
-        return grid;
+        // Return both the grid and heights array
+        return { grid, heights };
       }
 
+      function getHeightAtCameraPosition(
+        cameraPosition,
+        heights,
+        gridWidth,
+        gridHeight
+      ) {
+        const [x_c, y_c, z_c] = cameraPosition; // Extract camera position
+
+        // Normalize camera position to terrain grid
+        const x_idx = Math.floor(x_c * (gridWidth - 1));
+        const y_idx = Math.floor(y_c * (gridHeight - 1));
+
+        // Clamp indices to prevent out-of-bounds access
+        const clamped_x_idx = Math.min(x_idx, gridWidth - 2);
+        const clamped_y_idx = Math.min(y_idx, gridHeight - 2);
+
+        // Calculate interpolation factors
+        const s = x_c * (gridWidth - 1) - x_idx;
+        const t = y_c * (gridHeight - 1) - y_idx;
+
+        // Get heights from surrounding points
+        const P00 = heights[clamped_y_idx][clamped_x_idx];
+        const P01 = heights[clamped_y_idx][clamped_x_idx + 1];
+        const P10 = heights[clamped_y_idx + 1][clamped_x_idx];
+        const P11 = heights[clamped_y_idx + 1][clamped_x_idx + 1];
+
+        // Perform bilinear interpolation
+        const H_top = P00 * (1 - s) + P01 * s;
+        const H_bottom = P10 * (1 - s) + P11 * s;
+        const heightAtCamera = H_top * (1 - t) + H_bottom * t;
+
+        console.log(clamped_x_idx, clamped_y_idx, heights);
+        return heightAtCamera; // This height can be used in your shader
+      }
+
+      function getHeightAtWorldPosition(x_world, y_world, gridSize, heights) {
+        // Normalize world coordinates to the range [-1, 1]
+        const x_normalized = Math.max(-1, Math.min(1, x_world));
+        const y_normalized = Math.max(-1, Math.min(1, y_world));
+
+        // Map normalized coordinates to grid space
+        const col = ((x_normalized + 1) / 2) * gridSize;
+        const row = ((y_normalized + 1) / 2) * gridSize;
+
+        // Determine surrounding vertices
+        const rowLow = Math.floor(row);
+        const rowHigh = Math.min(rowLow + 1, gridSize);
+        const colLow = Math.floor(col);
+        const colHigh = Math.min(colLow + 1, gridSize);
+
+        // Retrieve heights of the four surrounding vertices
+        const height00 = heights[rowLow * (gridSize + 1) + colLow];
+        const height10 = heights[rowLow * (gridSize + 1) + colHigh];
+        const height01 = heights[rowHigh * (gridSize + 1) + colLow];
+        const height11 = heights[rowHigh * (gridSize + 1) + colHigh];
+
+        // Calculate interpolation weights
+        const tX = col - colLow;
+        const tY = row - rowLow;
+
+        // Bilinear interpolation
+        const height =
+          (1 - tX) * (1 - tY) * height00 +
+          tX * (1 - tY) * height10 +
+          (1 - tX) * tY * height01 +
+          tX * tY * height11;
+
+        return height;
+      }
       // /** Draw one frame */
       function draw(seconds) {
-        console.log("position", position.x, position.y, position.z);
-        console.log("rotation", rotation.x, rotation.y);
+        const heightAtCoord = getHeightAtWorldPosition(
+          position.x,
+          position.y,
+          gridsize,
+          height
+        );
+        // console.log(
+        //   "position",
+        //   [position.x, position.y, position.z],
+        //   "height at world coord",
+        //   heightAtCoord
+        // );
+
+        // console.log("rotation", rotation.x, rotation.y);
 
         const translationSpeed = 0.01; // Adjust for slower translation
         const rotationSpeed = 0.01; // Adjust for slower rotation
@@ -187,14 +266,14 @@
         let cameraRight = cross(cameraFront, [0, 1, 0]); // Cross with world up
         let cameraUp = cross(cameraRight, cameraFront);
 
-        // Calculate forward vector
+        // Calculate forward vecto
 
         let v = m4view(
-          [position.x, position.z, position.y], // camera position
+          [position.x, position.y, heightAtCoord + 0.2], // camera position
           [
-            position.x + Math.cos(rotation.y) * Math.cos(rotation.x),
-            position.z + Math.sin(rotation.y) * Math.cos(rotation.x),
-            position.y + Math.sin(rotation.x),
+            position.x + cameraFront[0],
+            position.y + cameraFront[2],
+            heightAtCoord + 0.15 + cameraFront[1],
           ], // center (where the camera is looking)
           [0, 0, 1] // up vector
         );
@@ -209,21 +288,21 @@
         }
         if (keysBeingPressed["w"]) {
           position.x += cameraFront[0] * translationSpeed;
-          position.z += cameraFront[2] * translationSpeed; // Use z for camera position
-          position.y += cameraFront[1] * translationSpeed;
+          position.z += cameraFront[1] * translationSpeed; // Use z for camera position
+          position.y += cameraFront[2] * translationSpeed;
         }
         if (keysBeingPressed["s"]) {
           position.x -= cameraFront[0] * translationSpeed;
-          position.z -= cameraFront[2] * translationSpeed;
-          position.y -= cameraFront[1] * translationSpeed;
+          position.z -= cameraFront[1] * translationSpeed;
+          position.y -= cameraFront[2] * translationSpeed;
         }
 
         // Keyboard controls for rotation (pitch and yaw)
         if (keysBeingPressed["ArrowUp"]) {
-          rotation.x += 0.05; // pitch up
+          rotation.x = Math.min(rotation.x + 0.05, Math.PI / 2); // pitch up with a limit
         }
         if (keysBeingPressed["ArrowDown"]) {
-          rotation.x -= 0.05; // pitch down
+          rotation.x = Math.max(rotation.x - 0.05, -Math.PI / 2); // pitch down with a limit
         }
         if (keysBeingPressed["ArrowLeft"]) {
           rotation.y += 0.05; // yaw left
@@ -284,14 +363,22 @@
         fillScreen();
         window.addEventListener("resize", fillScreen);
 
-        const gridsize = parseInt(Math.random() * 100);
+        window.gridsize = parseInt(Math.random() * 100);
         const faults = gridsize * 2;
-        window.geom = setupGeomery(generateGrid(gridsize, faults, 1));
-        console.log(gridsize, faults);
+        const { grid, heights } = generateGrid(gridsize, faults, 1);
+        window.height = heights;
+        window.geom = setupGeomery(grid);
+        // console.log(gridsize, faults, grid, height);
+
+        // getHeightAtCameraPosition([1, 1, 1], height, gridsize, gridsize);
+        console.log(
+          "height at world coord",
+          getHeightAtWorldPosition(-0.05, 0.05, gridsize, heights)
+        );
         window.position = {
-          x: 0.02,
-          y: 1,
-          z: -2.25,
+          x: -0.05,
+          y: 0.05,
+          z: -0.09,
         };
         window.rotation = {
           x: -0.25,

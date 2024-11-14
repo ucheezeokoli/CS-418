@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "jimp": "^1.6.0"
+  },
+  "devDependencies": {},
+  "type": "module",
+  "scripts": {
+    "build": "echo 'No build step required'",
+    "start": "node index.js"
+  }
+}

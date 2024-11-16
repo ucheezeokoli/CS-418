@@ -1,0 +1,673 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OBJ File Loading</title>
+    <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
+    <script src="wrapWebGL2.js"></script>
+    <script src="math.js"></script>
+
+    <body>
+      <form class="controls" action="javascript:void(0);">
+        <label>File path: <input id="filePath" type="text" /></label>
+        <label>Image path: <input id="imagePath" type="text" /></label>
+        <input id="submit" type="submit" value="Load OBJ" />
+      </form>
+      <div class="display">
+        <canvas width="300" height="300"></canvas>
+      </div>
+    </body>
+
+    <!-- The source code of a vertex shader directly in the HTML. The 'type=' command can have any value except "javascript" and just tells the browser not to try to run the code as javascript. -->
+    <script id="vert" type="glsl">
+      #version 300 es
+      precision highp float;
+
+      // Vertex attributes
+      layout(location=0) in vec4 position;
+      layout(location=1) in vec3 normal;
+      layout(location=2) in vec2 texCoord;
+      layout(location=3) in vec3 color;
+
+
+      // Outputs for fragment shader
+      out vec3 vnormal;
+      out vec2 vtexCoord;
+      out vec3 vcolor;
+
+      uniform mat4 mv;
+      uniform mat4 p;
+
+      void main() {
+          gl_Position = p * mv * position;
+          vnormal = mat3(mv) * normal;
+          vcolor = color;
+          vtexCoord = texCoord;
+      }
+    </script>
+
+    <!-- The source code of a fragment shader. -->
+    <script id="frag" type="glsl">
+      #version 300 es
+      precision highp float;
+      // uniform vec4 color;
+
+      uniform vec3 lightdir;
+      uniform vec3 lightcolor;
+      uniform vec3 halfway;
+
+      out vec4 fragColor;
+      in vec3 vnormal;
+      in vec3 vcolor;
+
+      void main() {
+          vec3 n = normalize(vnormal);
+          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
+
+          // Diffuse lighting calculation (lambert)
+          float lambert = max(dot(n, lightdir), 0.0);
+
+          // Specular lighting calculation (Blinn-Phong)
+          float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
+
+          // Combine diffuse and specular components for both light sources
+          vec3 diffuseComponent = lambert * lightcolor * vcolor.rgb;
+          vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
+
+          // Final fragment color
+          fragColor = vec4(diffuseComponent + specularComponent/2.0, 1);
+      }
+    </script>
+
+    <script id="text" type="glsl">
+      #version 300 es
+      precision highp float;
+
+      in vec3 vnormal;
+      in vec2 vtexCoord;
+
+      uniform sampler2D texSampler;    // Texture uniform
+      uniform vec3 lightdir;
+      uniform vec3 lightcolor;
+
+      out vec4 fragColor;
+
+      void main() {
+        vec3 n = normalize(vnormal);
+
+        // Diffuse lighting (Lambertian)
+        float lambert = max(dot(n, lightdir), 0.0);
+
+        // Sample the texture color
+        vec4 texColor = texture(texSampler, vtexCoord);
+
+        // Apply diffuse lighting to texture color
+        vec3 lighting = lambert * lightcolor * texColor.rgb;
+
+        fragColor = vec4(lighting, 1.0); // Alpha is always 1.0 for non-transparent
+      }
+    </script>
+
+    <!-- All the other code in one big script element. -->
+    <script>
+      /** Draw one frame */
+      function draw(seconds, useTexture) {
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // gl.uniform4fv(program.uniforms.color, rgba);
+
+        // Camera position moving around the terrain
+        let eye = [
+          Math.sin(seconds / 2) * 1.75,
+          Math.cos(seconds / 2) * 1.75,
+          1.5,
+        ]; // Increase distance for better view
+        let v = m4view(eye, [0, 0, 0], [0, 0, 1]);
+
+        if (useTexture) {
+          gl.useProgram(textureProgram);
+          gl.uniform1i(textureProgram.uniforms.texSampler, 0.0);
+          gl.uniform3fv(textureProgram.uniforms.lightdir, normalize([0, 0, 1]));
+          gl.uniform3fv(
+            program.uniforms.halfway,
+            normalize(add([0, 0, 1], [1, -1, 2]))
+          );
+          gl.uniform3fv(textureProgram.uniforms.lightcolor, [1.0, 1.0, 1.0]);
+          gl.uniformMatrix4fv(textureProgram.uniforms.p, false, p);
+          gl.uniformMatrix4fv(textureProgram.uniforms.mv, false, v);
+        } else {
+          gl.useProgram(program);
+          // First light source coming from above, slightly angled
+          let ld = normalize([0, 0, 1]); // Adjust light direction
+          gl.uniform3fv(program.uniforms.lightdir, ld);
+          gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
+
+          // halfway normal 1
+          let h = normalize(add(ld, [1, -1, 2])); // Calculate halfway vector
+          gl.uniform3fv(program.uniforms.halfway, h);
+          gl.uniformMatrix4fv(program.uniforms.p, false, p);
+          gl.uniformMatrix4fv(program.uniforms.mv, false, v);
+        }
+        gl.bindVertexArray(geom.vao);
+        gl.drawElements(geom.mode, geom.count, geom.type, 0);
+      }
+
+      /** Compute any time-varying or animated aspects of the scene */
+      function tick(milliseconds) {
+        let seconds = milliseconds / 1000;
+
+        let useTexture = materialHasTexture;
+
+        draw(seconds, useTexture);
+        requestAnimationFrame(tick);
+      }
+
+      /** Resizes the canvas to completely fill the screen */
+      function fillScreen() {
+        let canvas = document.querySelector("canvas");
+        document.body.style.margin = "0";
+        canvas.style.width = "100vw";
+        canvas.style.height = "100vh";
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        canvas.style.width = "";
+        canvas.style.height = "";
+        if (window.gl) {
+          gl.viewport(0, 0, canvas.width, canvas.height);
+          window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height);
+        }
+      }
+      function parseOBJ(objData) {
+        const obj = {
+          triangles: [],
+          attributes: [
+            [], // positions (x, y, z)
+            [], // normals (nx, ny, nz)
+            [], // texture coordinates (u, v)
+            [], // colors (r, g, b)
+          ],
+        };
+
+        const positions = [];
+        const normals = [];
+        const texCoords = [];
+        const colors = []; // To store colors for each vertex
+        const vertexMap = new Map(); // Map to handle vertex combinations (position/normal/texcoord)
+        let vertexIndex = 0;
+
+        const lines = objData.split("\n");
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+
+          if (parts[0] === "v") {
+            // Vertex position and optional color data
+            const x = parseFloat(parts[1]);
+            const y = parseFloat(parts[2]);
+            const z = parseFloat(parts[3]);
+
+            // Check if color data exists
+            const r = parts.length > 4 ? parseFloat(parts[4]) : 0.8; // Default grey if no color
+            const g = parts.length > 5 ? parseFloat(parts[5]) : 0.8; // Default grey if no color
+            const b = parts.length > 6 ? parseFloat(parts[6]) : 0.8; // Default grey if no color
+
+            positions.push([x, y, z]); // Store positions as arrays of 3 values
+            colors.push([r, g, b]); // Store colors as arrays of 3 values (RGB)
+          } else if (parts[0] === "vn") {
+            // Vertex normal
+            const normal = parts.slice(1).map(parseFloat);
+            normals.push(normal);
+          } else if (parts[0] === "vt") {
+            // Texture coordinates
+            const texCoord = parts.slice(1).map(parseFloat);
+            texCoords.push(texCoord);
+          } else if (parts[0] === "f") {
+            // Face (index references for vertices)
+            const faceIndices = [];
+            for (const vertex of parts.slice(1)) {
+              if (!vertexMap.has(vertex)) {
+                // Parse vertex reference
+                const [posIdx, texIdx, normIdx] = vertex
+                  .split("/")
+                  .map((x) => (x ? parseInt(x) - 1 : null));
+
+                // Position
+                const pos = positions[posIdx];
+                obj.attributes[0].push(pos); // Store positions as arrays of 3 values
+
+                // Texture coordinates
+                if (texIdx !== null && texCoords[texIdx]) {
+                  obj.attributes[2].push(texCoords[texIdx]); // Store UV as arrays of 2 values
+                } else {
+                  obj.attributes[2].push([0, 0]); // Default UV if not provided
+                }
+
+                // Normal
+                if (normIdx !== null && normals[normIdx]) {
+                  obj.attributes[1].push(normals[normIdx]); // Store normals as arrays of 3 values
+                }
+
+                console.log("vertex", colors[vertex - 1]);
+                // Color (use the color of the vertex if specified, otherwise use default)
+                obj.attributes[3].push(colors[vertex] || [0.8, 0.8, 0.8]); // Default grey color
+
+                // Save vertex index
+                vertexMap.set(vertex, vertexIndex++);
+              }
+
+              // Push the vertex index for the face
+              faceIndices.push(vertexMap.get(vertex));
+            }
+
+            // Handle triangulation (split quads into triangles)
+            for (let i = 1; i < faceIndices.length - 1; i++) {
+              obj.triangles.push([
+                faceIndices[0],
+                faceIndices[i],
+                faceIndices[i + 1],
+              ]);
+            }
+          }
+        }
+
+        return obj;
+      }
+
+      // function parseOBJ(objData) {
+      //   const obj = {
+      //     triangles: [],
+      //     attributes: [
+      //       [], // positions (x, y, z)
+      //       [], // normals (nx, ny, nz)
+      //       [], // texture coordinates (u, v)
+      //     ],
+      //   };
+
+      //   const positions = [];
+      //   const normals = [];
+      //   const texCoords = [];
+      //   const vertexMap = new Map(); // Map to handle vertex combinations (position/normal/texcoord)
+      //   let vertexIndex = 0;
+
+      //   const lines = objData.split("\n");
+      //   for (const line of lines) {
+      //     const parts = line.trim().split(/\s+/);
+
+      //     if (parts[0] === "v") {
+      //       // Vertex position
+      //       const position = parts.slice(1).map(parseFloat);
+      //       positions.push(position);
+      //     } else if (parts[0] === "vn") {
+      //       // Vertex normal
+      //       const normal = parts.slice(1).map(parseFloat);
+      //       normals.push(normal);
+      //     } else if (parts[0] === "vt") {
+      //       // Texture coordinate
+      //       const texCoord = parts.slice(1).map(parseFloat);
+      //       texCoords.push(texCoord);
+      //     } else if (parts[0] === "f") {
+      //       // Face
+      //       const faceIndices = [];
+      //       for (const vertex of parts.slice(1)) {
+      //         if (!vertexMap.has(vertex)) {
+      //           // Parse vertex reference
+      //           const [posIdx, texIdx, normIdx] = vertex
+      //             .split("/")
+      //             .map((x) => (x ? parseInt(x) - 1 : null));
+
+      //           // Position
+      //           const pos = positions[posIdx];
+      //           obj.attributes[0].push(pos); // Store positions as arrays of 3 values
+
+      //           // Texture coordinates
+      //           if (texIdx !== null && texCoords[texIdx]) {
+      //             obj.attributes[2].push(texCoords[texIdx]); // Store UV as arrays of 2 values
+      //           } else {
+      //             obj.attributes[2].push([0, 0]); // Default UV
+      //           }
+
+      //           // Normal
+      //           if (normIdx !== null && normals[normIdx]) {
+      //             obj.attributes[1].push(normals[normIdx]); // Store normals as arrays of 3 values
+      //           }
+      //           // else {
+      //           //   obj.attributes[1].push([0, 0, 0]); // Placeholder for missing normals
+      //           // }
+
+      //           // Save vertex index
+      //           vertexMap.set(vertex, vertexIndex++);
+      //         }
+
+      //         // Push the vertex index for the face
+      //         faceIndices.push(vertexMap.get(vertex));
+      //       }
+
+      //       // Handle triangulation (split quads into triangles)
+      //       for (let i = 1; i < faceIndices.length - 1; i++) {
+      //         obj.triangles.push([
+      //           faceIndices[0],
+      //           faceIndices[i],
+      //           faceIndices[i + 1],
+      //         ]);
+      //       }
+      //     }
+      //   }
+
+      //   return obj;
+      // }
+
+      function computeNormals(geom) {
+        const positions = geom.attributes[0]; // Assuming positions are in attribute 0
+        const triangles = geom.triangles; // Indices defining faces
+
+        // Initialize normals for each vertex
+        const normals = Array(positions.length)
+          .fill(null)
+          .map(() => [0, 0, 0]);
+
+        // Compute face normals and accumulate into vertex normals
+        triangles.forEach((face) => {
+          const [i0, i1, i2] = face;
+
+          const v0 = positions[i0];
+          const v1 = positions[i1];
+          const v2 = positions[i2];
+
+          const edge1 = v1.map((v, i) => v - v0[i]);
+          const edge2 = v2.map((v, i) => v - v0[i]);
+
+          // Cross product to get face normal
+          const faceNormal = [
+            edge1[1] * edge2[2] - edge1[2] * edge2[1],
+            edge1[2] * edge2[0] - edge1[0] * edge2[2],
+            edge1[0] * edge2[1] - edge1[1] * edge2[0],
+          ];
+
+          // Normalize face normal
+          const length = Math.sqrt(
+            faceNormal[0] ** 2 + faceNormal[1] ** 2 + faceNormal[2] ** 2
+          );
+          faceNormal.forEach((_, i) => (faceNormal[i] /= length));
+
+          // Add face normal to each vertex normal
+          [i0, i1, i2].forEach((i) => {
+            normals[i] = normals[i].map((v, j) => v + faceNormal[j]);
+          });
+        });
+
+        // Normalize all vertex normals
+        normals.forEach((normal) => {
+          const length = Math.sqrt(
+            normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2
+          );
+          normal.forEach((_, i) => (normal[i] /= length));
+        });
+
+        // Add normals to geometry attributes
+        geom.attributes[1] = normals; // Store in attribute index 1
+        return geom;
+      }
+
+      function centerAndScaleModel(obj) {
+        // Step 1: Find the bounding box of the model
+        let minX = Infinity,
+          minY = Infinity,
+          minZ = Infinity;
+        let maxX = -Infinity,
+          maxY = -Infinity,
+          maxZ = -Infinity;
+
+        for (const pos of geom.attributes[0]) {
+          minX = Math.min(minX, pos[0]);
+          minY = Math.min(minY, pos[1]);
+          minZ = Math.min(minZ, pos[2]);
+          maxX = Math.max(maxX, pos[0]);
+          maxY = Math.max(maxY, pos[1]);
+          maxZ = Math.max(maxZ, pos[2]);
+        }
+
+        // Step 2: Calculate the center of the model
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+
+        // Step 3: Calculate the scaling factor
+        const maxDimension = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+        const scaleFactor = 2.0 / maxDimension; // Scale so that the model fits in the range [-1, 1]
+
+        // Step 4: Apply translation and scaling to the positions
+        for (let i = 0; i < geom.attributes[0].length; i++) {
+          let pos = geom.attributes[0][i];
+          // Translate the model to center it at the origin
+          pos = [
+            (pos[0] - centerX) * scaleFactor,
+            (pos[1] - centerY) * scaleFactor,
+            (pos[2] - centerZ) * scaleFactor,
+          ];
+          geom.attributes[0][i] = pos;
+        }
+      }
+
+      document
+        .querySelector("#submit")
+        .addEventListener("click", async (event) => {
+          const filePath = String(document.querySelector("#filePath").value);
+          const imagePath = String(document.querySelector("#imagePath").value);
+          window.rgba = blank;
+
+          if (/[.](jpg|png)$/.test(imagePath)) {
+            let img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = imagePath;
+
+            img.addEventListener("load", () => {
+              console.log("Image loaded successfully:", img.src);
+              materialHasTexture = true;
+
+              let slot = 0;
+              let texture = gl.createTexture();
+              gl.activeTexture(gl.TEXTURE0 + slot);
+              gl.bindTexture(gl.TEXTURE_2D, texture);
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_S,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_T,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_MIN_FILTER,
+                gl.NEAREST
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_MAG_FILTER,
+                gl.NEAREST
+              );
+
+              gl.texImage2D(
+                gl.TEXTURE_2D, // destination slot
+                0, // the mipmap level this data provides; almost always 0
+                gl.RGBA, // how to store it in graphics memory
+                gl.RGBA, // how it is stored in the image object
+                gl.UNSIGNED_BYTE, // size of a single pixel-color in HTML
+                img // source data
+              );
+              gl.generateMipmap(gl.TEXTURE_2D); // lets you use a mipmapping min filter
+            });
+
+            img.addEventListener("error", () => {
+              console.log("Image failed to load. Using fallback color.");
+              materialHasTexture = false;
+            });
+          } else {
+            materialHasTexture = false;
+          }
+
+          try {
+            const response = await fetch(filePath);
+            if (!response.ok) {
+              throw new Error(
+                `Failed to fetch ${filePath}: ${response.statusText}`
+              );
+            }
+            const objData = await response.text();
+            console.log(".obj contents", objData);
+            window.geom = parseOBJ(objData);
+            if (geom.attributes[1].length == 0) {
+              geom = computeNormals(geom);
+            }
+            console.log("geom", geom);
+
+            centerAndScaleModel(geom);
+            geom = setupGeomery(geom);
+          } catch (error) {
+            console.error(error);
+          }
+
+          requestAnimationFrame(tick);
+        });
+
+      /** Compile, link, set up geometry */
+      window.addEventListener("load", async (event) => {
+        window.gl = document.querySelector("canvas").getContext(
+          "webgl2",
+          // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
+          { antialias: false, depth: true }
+        );
+        let vs = document.querySelector("#vert").textContent.trim();
+        let fs = document.querySelector("#frag").textContent.trim();
+        let ts = document.querySelector("#text").textContent.trim();
+        window.program = compileShader(vs, fs);
+        window.textureProgram = compileShader(vs, ts);
+        window.rgba = blank;
+        window.materialHasTexture = false;
+        gl.enable(gl.DEPTH_TEST);
+        fillScreen();
+        window.addEventListener("resize", fillScreen);
+      });
+    </script>
+
+    <!-- Code I don't expect to change. -->
+    <script>
+      const IlliniBlue = new Float32Array([0.075, 0.16, 0.292, 1]);
+      const IlliniOrange = new Float32Array([1, 0.373, 0.02, 1]);
+      const IdentityMatrix = new Float32Array([
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+      ]);
+      const blank = new Float32Array([1.0, 1.0, 1.0, 0.3]);
+
+      /**
+       * Given the source code of a vertex and fragment shader, compiles them,
+       * and returns the linked program.
+       */
+      function compileShader(vs_source, fs_source) {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vs_source);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+          console.error(gl.getShaderInfoLog(vs));
+          throw Error("Vertex shader compilation failed");
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fs_source);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+          console.error(gl.getShaderInfoLog(fs));
+          throw Error("Fragment shader compilation failed");
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error(gl.getProgramInfoLog(program));
+          throw Error("Linking failed");
+        }
+
+        const uniforms = {};
+        for (
+          let i = 0;
+          i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+          i += 1
+        ) {
+          let info = gl.getActiveUniform(program, i);
+          uniforms[info.name] = gl.getUniformLocation(program, info.name);
+        }
+        program.uniforms = uniforms;
+
+        return program;
+      }
+
+      /**
+       * Sends per-vertex data to the GPU and connects it to a VS input
+       *
+       * @param data    a 2D array of per-vertex data (e.g. [[x,y,z,w],[x,y,z,w],...])
+       * @param loc     the layout location of the vertex shader's `in` attribute
+       * @param mode    (optional) gl.STATIC_DRAW, gl.DYNAMIC_DRAW, etc
+       *
+       * @returns the ID of the buffer in GPU memory; useful for changing data later
+       */
+      function supplyDataBuffer(data, loc, mode) {
+        if (mode === undefined) mode = gl.STATIC_DRAW;
+
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        const f32 = new Float32Array(data.flat());
+        gl.bufferData(gl.ARRAY_BUFFER, f32, mode);
+
+        gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(loc);
+
+        return buf;
+      }
+
+      /**
+       * Creates a Vertex Array Object and puts into it all of the data in the given
+       * JSON structure, which should have the following form:
+       *
+       * ````
+       * {"triangles": a list of of indices of vertices
+       * ,"attributes":
+       *  [ a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 0
+       *  , a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 1
+       *  , ...
+       *  ]
+       * }
+       * ````
+       *
+       * @returns an object with four keys:
+       *  - mode = the 1st argument for gl.drawElements
+       *  - count = the 2nd argument for gl.drawElements
+       *  - type = the 3rd argument for gl.drawElements
+       *  - vao = the vertex array object for use with gl.bindVertexArray
+       */
+      function setupGeomery(geom) {
+        var triangleArray = gl.createVertexArray();
+        gl.bindVertexArray(triangleArray);
+
+        for (let i = 0; i < geom.attributes.length; i += 1) {
+          let data = geom.attributes[i];
+          console.log(data);
+          supplyDataBuffer(data, i);
+        }
+
+        var indices = new Uint16Array(geom.triangles.flat());
+        var indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+        return {
+          mode: gl.TRIANGLES,
+          count: indices.length,
+          type: gl.UNSIGNED_SHORT,
+          vao: triangleArray,
+        };
+      }
+    </script>
+  </head>
+</html>

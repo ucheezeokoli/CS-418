@@ -1,6 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { Jimp, rgbaToInt } from "jimp";
+import { Jimp, rgbaToInt, intToRGBA } from "jimp";
 
 const readFileFromPath = async (filePath) => {
   try {
@@ -95,7 +95,7 @@ function intersectPlane(rayOrigin, rayDir, plane) {
 function intersectTriangle(rayOrigin, rayDir, triangle) {
   const { v1, v2, v3 } = triangle;
   if (v1 == undefined) return null;
-  console.log(v1, v2, v3);
+  // console.log(v1, v2, v3);
   const edge1 = subtract(v2.position, v1.position);
   const edge2 = subtract(v3.position, v1.position);
   const h = crossProduct(rayDir, edge2);
@@ -168,9 +168,72 @@ function resolveIndex(i, length) {
   return i < 0 ? length + i : i - 1;
 }
 
+function sampleTexture(texture, point, obj) {
+  // Calculate texture coordinates based on object type
+  let u = 0,
+    v = 0;
+
+  if (obj.type === "sphere") {
+    // Convert intersection point to spherical coordinates
+    const relativePoint = normalize(subtract(point, obj.center));
+    u = 0.5 + Math.atan2(relativePoint.z, relativePoint.x) / (2 * Math.PI);
+    v = 0.5 - Math.asin(relativePoint.y) / Math.PI;
+  } else if (obj.type === "tri") {
+    // Barycentric interpolation for texture coordinates on triangle
+    const edge1 = subtract(obj.v2.position, obj.v1.position);
+    const edge2 = subtract(obj.v3.position, obj.v1.position);
+    const edgeToPoint = subtract(point, obj.v1.position);
+
+    const d00 = dot(edge1, edge1);
+    const d01 = dot(edge1, edge2);
+    const d11 = dot(edge2, edge2);
+    const d20 = dot(edgeToPoint, edge1);
+    const d21 = dot(edgeToPoint, edge2);
+
+    const denom = d00 * d11 - d01 * d01;
+    const v1 = (d11 * d20 - d01 * d21) / denom;
+    const v2 = (d00 * d21 - d01 * d20) / denom;
+    const v3 = 1 - v1 - v2;
+
+    u =
+      obj.v1.texCoord.u * v3 + obj.v2.texCoord.u * v1 + obj.v3.texCoord.u * v2;
+    v =
+      obj.v1.texCoord.v * v3 + obj.v2.texCoord.v * v1 + obj.v3.texCoord.v * v2;
+  }
+
+  // Wrap around texture coordinates if out of bounds
+  u = u % 1;
+  if (u < 0) u += 1;
+  v = v % 1;
+  if (v < 0) v += 1;
+
+  // Convert u, v to texture pixel indices
+  const texWidth = texture.width;
+  const texHeight = texture.height;
+  const texX = Math.floor(u * texWidth);
+  const texY = Math.floor(v * texHeight);
+
+  // Fetch the pixel color
+  // console.log(texture.image);
+
+  const texColorInt = texture.image.getPixelColor(texX, texY);
+  // console.log(texColorInt);
+  const { r, g, b } = intToRGBA(texColorInt);
+
+  return { r: r / 255, g: g / 255, b: b / 255 }; // Return normalized color
+}
+
+function mixColors(color1, color2, weight = 0.5) {
+  return {
+    r: color1.r * (1 - weight) + color2.r * weight,
+    g: color1.g * (1 - weight) + color2.g * weight,
+    b: color1.b * (1 - weight) + color2.b * weight,
+  };
+}
+
 // Main rendering function
 async function renderScene(scene) {
-  console.log(scene);
+  // console.log(scene);
   const { width, height, filename } = scene.image;
   const image = new Jimp({ width, height });
   let rayOrigin = { x: 0, y: 0, z: 0 };
@@ -286,9 +349,17 @@ async function renderScene(scene) {
           let diffuseIntensity = Math.max(dot(normal, sunDirection), 0.0);
           if (inShadow) diffuseIntensity *= 0; // Reduce intensity if in shadow (shadow factor)
 
-          const r = obj.color.r * sunColor.r * diffuseIntensity;
-          const g = obj.color.g * sunColor.g * diffuseIntensity;
-          const b = obj.color.b * sunColor.b * diffuseIntensity;
+          let color = { ...obj.color };
+          // console.log(Object.keys(obj.texture).length);
+
+          if (Object.keys(obj.texture).length == 4) {
+            const texColor = sampleTexture(obj.texture, intersectionPoint, obj);
+            color = texColor;
+          }
+
+          const r = color.r * sunColor.r * diffuseIntensity;
+          const g = color.g * sunColor.g * diffuseIntensity;
+          const b = color.b * sunColor.b * diffuseIntensity;
 
           const colorWithExposure = applyExposure({ r, g, b }, scene.exposure);
 
@@ -322,7 +393,7 @@ async function renderScene(scene) {
   console.log(`Image saved as ${filename}`);
 }
 
-function parseInput(input) {
+async function parseInput(input) {
   const lines = input.trim().split("\n");
   const scene = {
     image: {},
@@ -335,8 +406,11 @@ function parseInput(input) {
     panorama: false,
   };
   let currentColor = { r: 1, g: 1, b: 1 }; // Default color (white)
+  let currentTexture = { data: null, width: null, height: null }; // Default: no texture
 
-  lines.forEach((line) => {
+  for (const line of lines) {
+    // console.log(currentTexture);
+
     const parts = line.trim().split(/\s+/);
     const keyword = parts[0].toLowerCase();
 
@@ -356,6 +430,7 @@ function parseInput(input) {
         },
         radius: parseFloat(parts[4]),
         color: { ...currentColor },
+        texture: { ...currentTexture },
       };
       scene.objects.push(sphere);
     } else if (keyword === "plane") {
@@ -407,13 +482,13 @@ function parseInput(input) {
         idx3 >= 0 &&
         idx3 < vertexCount
       ) {
-        // return [vertices[idx1], vertices[idx2], vertices[idx3]];
         const tri = {
           type: keyword,
           v1: scene.vertices[idx1],
           v2: scene.vertices[idx2],
           v3: scene.vertices[idx3],
           color: { ...currentColor },
+          texture: { ...currentTexture },
         };
         scene.objects.push(tri);
       }
@@ -432,6 +507,23 @@ function parseInput(input) {
         g: parseFloat(parts[2]),
         b: parseFloat(parts[3]),
       };
+    } else if (keyword === "texture") {
+      const textureFile = parts[1];
+      if (textureFile === "none") {
+        currentTexture = null;
+      } else {
+        const image = await Jimp.read(`./raytracer-files/${textureFile}`);
+        console.log(image.getPixelColor);
+
+        currentTexture = {
+          image: image,
+          data: image.bitmap.data,
+          width: image.bitmap.width,
+          height: image.bitmap.height,
+        };
+
+        // currentTexture = textureFile;
+      }
     } else if (keyword === "expose") {
       scene.exposure = parseFloat(parts[1]);
     } else if (keyword === "up") {
@@ -457,7 +549,8 @@ function parseInput(input) {
     } else if (keyword === "panorama") {
       scene.panorama = true;
     }
-  });
+  }
+
   renderScene(scene);
 }
 
@@ -468,7 +561,7 @@ const main = async () => {
     try {
       const fileData = await readFileFromPath(filePath);
 
-      console.log("Input Data", fileData);
+      // console.log("Input Data", fileData);
 
       parseInput(fileData);
     } catch (error) {

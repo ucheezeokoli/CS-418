@@ -1,0 +1,742 @@
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Spheres</title>
+  <!-- part of a multi-part demonstration: see cs418.cs.illinois.edu -->
+  <script src="wrapWebGL2.js"></script>
+  <script src="math.js"></script>
+
+<body>
+  <form class="controls" action="javascript:void(0);">
+  </form>
+  <div class="display">
+    <canvas width="300" height="300"></canvas>
+  </div>
+</body>
+
+<!-- The source code of a vertex shader directly in the HTML. The 'type=' command can have any value except "javascript" and just tells the browser not to try to run the code as javascript. -->
+<script id="vert" type="glsl">
+      #version 300 es
+      layout(location=0) in vec4 position;
+      layout(location=1) in vec3 normal;
+      uniform mat4 mv;
+      uniform mat4 p;
+      out vec3 vnormal;
+      void main() {
+          gl_Position = p * mv * position;
+          vnormal = mat3(mv) * normal;
+      }
+    </script>
+
+<!-- The source code of a fragment shader. -->
+<script id="frag" type="glsl">
+      #version 300 es
+      precision highp float;
+      uniform vec4 color;
+
+      uniform vec3 lightdir;
+      uniform vec3 lightcolor;
+      uniform vec3 halfway;
+
+      out vec4 fragColor;
+      in vec3 vnormal;
+
+      void main() {
+          vec3 n = normalize(vnormal);
+          //vec3 normalizedLightDir = normalize(lightdir);  // Normalize light direction
+
+          // Diffuse lighting calculation (lambert)
+          float lambert = max(dot(n, lightdir), 0.0);
+
+          // Specular lighting calculation (Blinn-Phong)
+          float specular = pow(max(dot(n, halfway), 0.0), 50.0);  // Adjust exponent for shininess
+
+          // Combine diffuse and specular components for both light sources
+          vec3 diffuseComponent = lambert * lightcolor * color.rgb;
+          vec3 specularComponent = specular * vec3(1.0, 1.0, 1.0);  // White specular highlight
+
+          // Final fragment color
+          fragColor = vec4(diffuseComponent + specularComponent/1.5, color.a);
+      }
+    </script>
+
+<!-- All the other code in oe big script element. -->
+<script>
+  const sphere = {
+    "attributes":
+      [
+        [[0.850651, 0.525731, 0]
+          , [0, -0.850651, 0.525731]
+          , [0, 0.850651, -0.525731]
+          , [0, -0.850651, -0.525731]
+          , [0, -1, 0]
+          , [1, 0, 0]
+          , [-1, 0, 0]
+          , [0.809017, 0.309017, 0.5]
+          , [0.809017, 0.309017, -0.5]
+          , [-0.809017, 0.309017, 0.5]
+          , [-0.809017, 0.309017, -0.5]
+          , [-0.850651, 0.525731, 0]
+          , [0.5, 0.809017, 0.309017]
+          , [0.5, -0.809017, 0.309017]
+          , [0.5, 0.809017, -0.309017]
+          , [0.5, -0.809017, -0.309017]
+          , [0.809017, -0.309017, 0.5]
+          , [0.809017, -0.309017, -0.5]
+          , [-0.5, 0.809017, 0.309017]
+          , [-0.809017, -0.309017, 0.5]
+          , [-0.5, 0.809017, -0.309017]
+          , [-0.809017, -0.309017, -0.5]
+          , [0.850651, -0.525731, 0]
+          , [0, 0, 1]
+          , [-0.5, -0.809017, 0.309017]
+          , [0.309017, 0.5, 0.809017]
+          , [0, 0, -1]
+          , [0.309017, -0.5, 0.809017]
+          , [-0.5, -0.809017, -0.309017]
+          , [-0.309017, 0.5, 0.809017]
+          , [0.309017, 0.5, -0.809017]
+          , [-0.309017, -0.5, 0.809017]
+          , [0.309017, -0.5, -0.809017]
+          , [-0.850651, -0.525731, 0]
+          , [-0.309017, 0.5, -0.809017]
+          , [-0.309017, -0.5, -0.809017]
+          , [0, 1, 0]
+          , [0.525731, 0, 0.850651]
+          , [0.525731, 0, -0.850651]
+          , [-0.525731, 0, 0.850651]
+          , [-0.525731, 0, -0.850651]
+          , [0, 0.850651, 0.525731]
+        ]
+        ,
+        [[0.8507, 0.5257, 0]
+          , [0, -0.8507, 0.5257]
+          , [0, 0.8507, -0.5257]
+          , [0, -0.8507, -0.5257]
+          , [0, -1, 0]
+          , [1, 0, 0]
+          , [-1, 0, 0]
+          , [0.809, 0.309, 0.5]
+          , [0.809, 0.309, -0.5]
+          , [-0.809, 0.309, 0.5]
+          , [-0.809, 0.309, -0.5]
+          , [-0.8507, 0.5257, 0]
+          , [0.5, 0.809, 0.309]
+          , [0.5, -0.809, 0.309]
+          , [0.5, 0.809, -0.309]
+          , [0.5, -0.809, -0.309]
+          , [0.809, -0.309, 0.5]
+          , [0.809, -0.309, -0.5]
+          , [-0.5, 0.809, 0.309]
+          , [-0.809, -0.309, 0.5]
+          , [-0.5, 0.809, -0.309]
+          , [-0.809, -0.309, -0.5]
+          , [0.8507, -0.5257, 0]
+          , [0, 0, 1]
+          , [-0.5, -0.809, 0.309]
+          , [0.309, 0.5, 0.809]
+          , [0, 0, -1]
+          , [0.309, -0.5, 0.809]
+          , [-0.5, -0.809, -0.309]
+          , [-0.309, 0.5, 0.809]
+          , [0.309, 0.5, -0.809]
+          , [-0.309, -0.5, 0.809]
+          , [0.309, -0.5, -0.809]
+          , [-0.8507, -0.5257, 0]
+          , [-0.309, 0.5, -0.809]
+          , [-0.309, -0.5, -0.809]
+          , [0, 1, 0]
+          , [0.5257, 0, 0.8507]
+          , [0.5257, 0, -0.8507]
+          , [-0.5257, 0, 0.8507]
+          , [-0.5257, 0, -0.8507]
+          , [0, 0.8507, 0.5257]
+        ]
+      ]
+    , "triangles":
+      [[0, 5, 8]
+        , [0, 7, 5]
+        , [0, 8, 14]
+        , [0, 12, 7]
+        , [0, 14, 12]
+        , [1, 4, 13]
+        , [1, 13, 27]
+        , [1, 24, 4]
+        , [1, 27, 31]
+        , [1, 31, 24]
+        , [2, 14, 30]
+        , [2, 20, 36]
+        , [2, 30, 34]
+        , [2, 34, 20]
+        , [2, 36, 14]
+        , [3, 4, 28]
+        , [3, 15, 4]
+        , [3, 28, 35]
+        , [3, 32, 15]
+        , [3, 35, 32]
+        , [4, 15, 13]
+        , [4, 24, 28]
+        , [5, 7, 16]
+        , [5, 16, 22]
+        , [5, 17, 8]
+        , [5, 22, 17]
+        , [6, 9, 11]
+        , [6, 10, 21]
+        , [6, 11, 10]
+        , [6, 19, 9]
+        , [6, 21, 33]
+        , [6, 33, 19]
+        , [7, 12, 25]
+        , [7, 25, 37]
+        , [7, 37, 16]
+        , [8, 17, 38]
+        , [8, 30, 14]
+        , [8, 38, 30]
+        , [9, 18, 11]
+        , [9, 19, 39]
+        , [9, 29, 18]
+        , [9, 39, 29]
+        , [10, 11, 20]
+        , [10, 20, 34]
+        , [10, 34, 40]
+        , [10, 40, 21]
+        , [11, 18, 20]
+        , [12, 14, 36]
+        , [12, 36, 41]
+        , [12, 41, 25]
+        , [13, 15, 22]
+        , [13, 16, 27]
+        , [13, 22, 16]
+        , [15, 17, 22]
+        , [15, 32, 17]
+        , [16, 37, 27]
+        , [17, 32, 38]
+        , [18, 29, 41]
+        , [18, 36, 20]
+        , [18, 41, 36]
+        , [19, 24, 31]
+        , [19, 31, 39]
+        , [19, 33, 24]
+        , [21, 28, 33]
+        , [21, 35, 28]
+        , [21, 40, 35]
+        , [23, 25, 29]
+        , [23, 27, 37]
+        , [23, 29, 39]
+        , [23, 31, 27]
+        , [23, 37, 25]
+        , [23, 39, 31]
+        , [24, 33, 28]
+        , [25, 41, 29]
+        , [26, 30, 38]
+        , [26, 32, 35]
+        , [26, 34, 30]
+        , [26, 35, 40]
+        , [26, 38, 32]
+        , [26, 40, 34]
+      ]
+  }
+
+  /** Draw one frame */
+  // function draw(seconds) {
+  //   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  //   gl.useProgram(program);
+
+  //   gl.bindVertexArray(geom.vao);
+
+  //   gl.uniform4fv(program.uniforms.color, earthTone);
+
+  //   // First light source coming from above, slightly angled
+  //   let ld = normalize([0, 1, 2]); // Adjust light direction
+  //   gl.uniform3fv(program.uniforms.lightdir, ld);
+  //   gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
+
+  //   // halfway normal 1
+  //   let h = normalize(add(ld, [1, 1, 2])); // Calculate halfway vector
+  //   gl.uniform3fv(program.uniforms.halfway, h);
+
+  //   let v = m4view([0, 1, 2], [0, 0, 0], [0, 1, 0]);
+  //   gl.uniformMatrix4fv(program.uniforms.p, false, p);
+  //   gl.uniformMatrix4fv(program.uniforms.mv, false, v);
+  //   gl.drawElements(geom.mode, geom.count, geom.type, 0);
+  // }
+
+  const gravity = -2.0; // Gravity constant, adjust as needed
+  const cubeSize = 10;  // Cube width (adjust for your scene)
+  const sphereRadius = (0.15 * cubeSize) / 2; // Sphere radius based on cube size
+
+  const cellSize = 2 * sphereRadius; // Each cell's size matches the sphere's diameter
+  const gridResolution = Math.ceil(cubeSize / cellSize); // Number of cells along each axis
+
+  function createGrid() {
+    let grid = [];
+    for (let x = 0; x < gridResolution; x++) {
+      grid[x] = [];
+      for (let y = 0; y < gridResolution; y++) {
+        grid[x][y] = [];
+        for (let z = 0; z < gridResolution; z++) {
+          grid[x][y][z] = [];
+        }
+      }
+    }
+    return grid;
+  }
+
+  function getCellIndices(position) {
+    return position.map((p) =>
+      Math.floor((p + cubeSize / 2) / cellSize)
+    );
+  }
+
+  function assignSpheresToGrid(grid, spheres) {
+    // Clear the grid
+    for (let x = 0; x < gridResolution; x++) {
+      for (let y = 0; y < gridResolution; y++) {
+        for (let z = 0; z < gridResolution; z++) {
+          grid[x][y][z] = [];
+        }
+      }
+    }
+
+    // Assign each sphere to the grid
+    spheres.forEach((sphere, i) => {
+      const [cx, cy, cz] = getCellIndices(sphere.position);
+      if (
+        cx >= 0 &&
+        cx < gridResolution &&
+        cy >= 0 &&
+        cy < gridResolution &&
+        cz >= 0 &&
+        cz < gridResolution
+      ) {
+        grid[cx][cy][cz].push(i); // Store sphere index
+      }
+    });
+  }
+
+  function checkCollisions(grid, spheres) {
+    for (let x = 0; x < gridResolution; x++) {
+      for (let y = 0; y < gridResolution; y++) {
+        for (let z = 0; z < gridResolution; z++) {
+          let cell = grid[x][y][z];
+          // Check all pairs in this cell
+          for (let i = 0; i < cell.length; i++) {
+            for (let j = i + 1; j < cell.length; j++) {
+              resolveSphereCollision(spheres[cell[i]], spheres[cell[j]]);
+            }
+          }
+
+          // Check neighboring cells
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dz = -1; dz <= 1; dz++) {
+                let nx = x + dx,
+                  ny = y + dy,
+                  nz = z + dz;
+                if (
+                  nx >= 0 &&
+                  nx < gridResolution &&
+                  ny >= 0 &&
+                  ny < gridResolution &&
+                  nz >= 0 &&
+                  nz < gridResolution &&
+                  !(dx === 0 && dy === 0 && dz === 0)
+                ) {
+                  let neighborCell = grid[nx][ny][nz];
+                  for (let i = 0; i < cell.length; i++) {
+                    for (let j = 0; j < neighborCell.length; j++) {
+                      resolveSphereCollision(
+                        spheres[cell[i]],
+                        spheres[neighborCell[j]]
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function resolveSphereCollision(sphere1, sphere2) {
+    // Vector from sphere1 to sphere2
+    const collisionVector = [
+      sphere2.position[0] - sphere1.position[0],
+      sphere2.position[1] - sphere1.position[1],
+      sphere2.position[2] - sphere1.position[2],
+    ];
+
+    // Distance between the centers
+    const distance = Math.sqrt(
+      collisionVector[0] ** 2 +
+      collisionVector[1] ** 2 +
+      collisionVector[2] ** 2
+    );
+
+    // If spheres aren't overlapping, no collision to resolve
+    if (distance >= 2 * sphereRadius) return;
+
+    // Normalize collision vector
+    const normal = collisionVector.map((v) => v / distance);
+
+    // Relative velocity
+    const relativeVelocity = [
+      sphere2.velocity[0] - sphere1.velocity[0],
+      sphere2.velocity[1] - sphere1.velocity[1],
+      sphere2.velocity[2] - sphere1.velocity[2],
+    ];
+
+    // Velocity along the normal
+    const velocityAlongNormal =
+      relativeVelocity[0] * normal[0] +
+      relativeVelocity[1] * normal[1] +
+      relativeVelocity[2] * normal[2];
+
+    // If spheres are separating, no need to resolve
+    if (velocityAlongNormal > 0) return;
+
+    // Compute impulse scalar
+    const elasticity = 1.5; // Elasticity factor (slightly less than 1 to dissipate energy)
+    const impulseMagnitude = -(1 + elasticity) * velocityAlongNormal / 2; // Divide by 2 for equal masses
+
+    // Apply impulse to each sphere
+    const impulse = normal.map((n) => impulseMagnitude * n);
+
+    sphere1.velocity[0] -= impulse[0];
+    sphere1.velocity[1] -= impulse[1];
+    sphere1.velocity[2] -= impulse[2];
+
+    sphere2.velocity[0] += impulse[0];
+    sphere2.velocity[1] += impulse[1];
+    sphere2.velocity[2] += impulse[2];
+
+    // Resolve overlap to prevent sticking
+    const overlap = 2 * sphereRadius - distance;
+    const correction = overlap / 2;
+    sphere1.position[0] -= correction * normal[0];
+    sphere1.position[1] -= correction * normal[1];
+    sphere1.position[2] -= correction * normal[2];
+
+    sphere2.position[0] += correction * normal[0];
+    sphere2.position[1] += correction * normal[1];
+    sphere2.position[2] += correction * normal[2];
+  }
+
+  // function updateSpheres(deltaTime, spheres) {
+  //   const dampingFactor = 0.99; // Reduce velocity slightly every frame
+
+  //   for (const sphere of spheres) {
+  //     // Apply gravity
+  //     sphere.velocity[1] -= gravity * deltaTime;
+
+  //     // Apply damping to velocity
+  //     sphere.velocity[0] *= dampingFactor;
+  //     sphere.velocity[1] *= dampingFactor;
+  //     sphere.velocity[2] *= dampingFactor;
+
+  //     // Update position based on velocity
+  //     sphere.position[0] += sphere.velocity[0] * deltaTime;
+  //     sphere.position[1] += sphere.velocity[1] * deltaTime;
+  //     sphere.position[2] += sphere.velocity[2] * deltaTime;
+
+  //     // Handle collisions with walls here
+  //     handleWallCollision(sphere);
+  //   }
+
+  //   // Check and resolve sphere-sphere collisions
+  //   for (let i = 0; i < spheres.length; i++) {
+  //     for (let j = i + 1; j < spheres.length; j++) {
+  //       resolveSphereCollision(spheres[i], spheres[j]);
+  //     }
+  //   }
+  // }
+
+  // Array to store sphere data
+  let spheres = Array.from({ length: 50 }, () => ({
+    position: [Math.random() * 20 - 10, Math.random() * 10 - 5, 0], // Random positions
+    velocity: [
+      Math.random() * 4 - 2, // Random x velocity: -2 to 2
+      Math.random() * 4 - 2, // Random y velocity: -2 to 2
+      Math.random() * 4 - 2, // Random z velocity: -2 to 2
+    ],
+    color: [Math.random(), Math.random(), Math.random(), 1.0], // Random colors with alpha = 1
+  }));
+
+  let lastReset = 0; // Track the time of the last reset
+
+  function draw(seconds) {
+    // Reset spheres every 15 seconds
+    if (seconds - lastReset > 15) {
+      spheres.forEach((sphere) => {
+        sphere.position = [
+          Math.random() * 20 - 10,
+          Math.random() * 10 - 5,
+          Math.random() * 10 - 5,
+        ];
+        sphere.velocity = [
+          Math.random() * 4 - 2,
+          Math.random() * 4 - 2,
+          Math.random() * 4 - 2,
+        ];
+      });
+      lastReset = seconds;
+    }
+
+    // Update sphere positions
+    spheres.forEach((sphere, i) => {
+      // Apply gravity
+      sphere.velocity[1] += gravity * 0.016; // Assuming 60 FPS (~16ms/frame)
+
+      // Update position based on velocity
+      sphere.position[0] += sphere.velocity[0] * 0.016;
+      sphere.position[1] += sphere.velocity[1] * 0.016;
+      sphere.position[2] += sphere.velocity[2] * 0.016;
+
+      // Wall collisions with elasticity
+      for (let i = 0; i < 3; i++) {
+        if (Math.abs(sphere.position[i]) + sphereRadius > cubeSize / 2) {
+          sphere.position[i] = Math.sign(sphere.position[i]) * (cubeSize / 2 - sphereRadius);
+          sphere.velocity[i] *= -0.03; // Elasticity factor
+        }
+      }
+    });
+
+    let grid = createGrid();
+
+    // Assign spheres to grid
+    assignSpheresToGrid(grid, spheres);
+
+    // Check collisions using spatial partitioning
+    checkCollisions(grid, spheres);
+
+
+    //   // Sphere-Sphere Collisions
+    //   for (let j = i + 1; j < spheres.length; j++) {
+    //     let other = spheres[j];
+    //     let delta = [
+    //       other.position[0] - sphere.position[0],
+    //       other.position[1] - sphere.position[1],
+    //       other.position[2] - sphere.position[2],
+    //     ];
+    //     let distance = Math.sqrt(delta[0] ** 2 + delta[1] ** 2 + delta[2] ** 2);
+
+    //     if (distance < 2 * sphereRadius) {
+    //       // Resolve overlap
+    //       let overlap = 2 * sphereRadius - distance;
+    //       let normal = delta.map((d) => d / distance);
+    //       sphere.position = sphere.position.map((p, k) => p - (overlap / 2) * normal[k]);
+    //       other.position = other.position.map((p, k) => p + (overlap / 2) * normal[k]);
+
+    //       // Update velocities
+    //       let relativeVelocity = sphere.velocity.map((v, k) => v - other.velocity[k]);
+    //       let vRelDotN = relativeVelocity.reduce((sum, v, k) => sum + v * normal[k], 0);
+
+    //       if (vRelDotN < 0) {
+    //         let impulse = (1 + 0.3) * vRelDotN; // Elasticity = 0.9
+    //         sphere.velocity = sphere.velocity.map((v, k) => v - impulse * normal[k]);
+    //         other.velocity = other.velocity.map((v, k) => v + impulse * normal[k]);
+    //       }
+    //     }
+    //   }
+    // });
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(program);
+
+    gl.bindVertexArray(geom.vao);
+
+    // First light source coming from above, slightly angled
+    let ld = normalize([0, 1, 2]); // Adjust light direction
+    gl.uniform3fv(program.uniforms.lightdir, ld);
+    gl.uniform3fv(program.uniforms.lightcolor, [1.0, 1.0, 1.0]); // White light
+    let h = normalize(add(ld, [1, 1, 2])); // Calculate halfway vector
+    gl.uniform3fv(program.uniforms.halfway, h);
+
+    // Iterate through spheres
+    spheres.forEach((sphere) => {
+      // Set sphere-specific color
+      gl.uniform4fv(program.uniforms.color, sphere.color);
+
+      let x = sphere.position[0]
+      let y = sphere.position[1]
+      let z = sphere.position[2]
+
+      // Calculate and set model-view matrix
+      let m = m4trans(x, y, z);
+      let v = m4view([0, 0, 15], [0, 0, 0], [0, 1, 0]);
+      let mv = m4mul(v, m);
+      gl.uniformMatrix4fv(program.uniforms.mv, false, mv);
+
+      gl.uniformMatrix4fv(program.uniforms.p, false, p);
+
+      // Draw sphere
+      gl.drawElements(geom.mode, geom.count, geom.type, 0);
+    });
+  }
+
+  /** Compute any time-varying or animated aspects of the scene */
+  function tick(milliseconds) {
+    let seconds = milliseconds / 1000;
+
+    draw(seconds);
+    requestAnimationFrame(tick);
+  }
+
+  /** Resizes the canvas to completely fill the screen */
+  function fillScreen() {
+    let canvas = document.querySelector("canvas");
+    document.body.style.margin = "0";
+    canvas.style.width = "100vw";
+    canvas.style.height = "100vh";
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+    canvas.style.width = "";
+    canvas.style.height = "";
+    if (window.gl) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      window.p = m4perspNegZ(0.1, 40, 2, canvas.width, canvas.height);
+    }
+  }
+
+  /** Compile, link, set up geometry */
+  window.addEventListener("load", async (event) => {
+    window.gl = document.querySelector("canvas").getContext(
+      "webgl2",
+      // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
+      { antialias: false, depth: true }
+    );
+    let vs = document.querySelector("#vert").textContent.trim();
+    let fs = document.querySelector("#frag").textContent.trim();
+    window.program = compileShader(vs, fs);
+    gl.enable(gl.DEPTH_TEST);
+    fillScreen();
+    window.addEventListener("resize", fillScreen);
+    window.geom = setupGeomery(sphere);
+    requestAnimationFrame(tick);
+  });
+</script>
+
+<!-- Code I don't expect to change. -->
+<script>
+  const IlliniBlue = new Float32Array([0.075, 0.16, 0.292, 1]);
+  const IlliniOrange = new Float32Array([1, 0.373, 0.02, 1]);
+  const IdentityMatrix = new Float32Array([
+    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+  ]);
+  const earthTone = new Float32Array([0.7, 0.5, 0.3, 1.0]);
+
+  /**
+   * Given the source code of a vertex and fragment shader, compiles them,
+   * and returns the linked program.
+   */
+  function compileShader(vs_source, fs_source) {
+    const vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, vs_source);
+    gl.compileShader(vs);
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(vs));
+      throw Error("Vertex shader compilation failed");
+    }
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, fs_source);
+    gl.compileShader(fs);
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(fs));
+      throw Error("Fragment shader compilation failed");
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+      throw Error("Linking failed");
+    }
+
+    const uniforms = {};
+    for (
+      let i = 0;
+      i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+      i += 1
+    ) {
+      let info = gl.getActiveUniform(program, i);
+      uniforms[info.name] = gl.getUniformLocation(program, info.name);
+    }
+    program.uniforms = uniforms;
+
+    return program;
+  }
+
+  /**
+   * Sends per-vertex data to the GPU and connects it to a VS input
+   *
+   * @param data    a 2D array of per-vertex data (e.g. [[x,y,z,w],[x,y,z,w],...])
+   * @param loc     the layout location of the vertex shader's `in` attribute
+   * @param mode    (optional) gl.STATIC_DRAW, gl.DYNAMIC_DRAW, etc
+   *
+   * @returns the ID of the buffer in GPU memory; useful for changing data later
+   */
+  function supplyDataBuffer(data, loc, mode) {
+    if (mode === undefined) mode = gl.STATIC_DRAW;
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    const f32 = new Float32Array(data.flat());
+    gl.bufferData(gl.ARRAY_BUFFER, f32, mode);
+
+    gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(loc);
+
+    return buf;
+  }
+
+  /**
+   * Creates a Vertex Array Object and puts into it all of the data in the given
+   * JSON structure, which should have the following form:
+   *
+   * ````
+   * {"triangles": a list of of indices of vertices
+   * ,"attributes":
+   *  [ a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 0
+   *  , a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 1
+   *  , ...
+   *  ]
+   * }
+   * ````
+   *
+   * @returns an object with four keys:
+   *  - mode = the 1st argument for gl.drawElements
+   *  - count = the 2nd argument for gl.drawElements
+   *  - type = the 3rd argument for gl.drawElements
+   *  - vao = the vertex array object for use with gl.bindVertexArray
+   */
+  function setupGeomery(geom) {
+    var triangleArray = gl.createVertexArray();
+    gl.bindVertexArray(triangleArray);
+
+    for (let i = 0; i < geom.attributes.length; i += 1) {
+      let data = geom.attributes[i];
+      supplyDataBuffer(data, i);
+    }
+
+    var indices = new Uint16Array(geom.triangles.flat());
+    var indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    return {
+      mode: gl.TRIANGLES,
+      count: indices.length,
+      type: gl.UNSIGNED_SHORT,
+      vao: triangleArray,
+    };
+  }
+</script>
+</head>
+
+</html>
